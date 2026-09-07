@@ -1,0 +1,50 @@
+name: Rust Audit
+
+# Reusable. Called by Rust repositories in this organization.
+#
+# Separate from rust-ci.yml because it answers a different question. CI asks
+# "does this change break the repository"; this asks "has the world changed
+# under a repository that did not". Advisories are published against
+# dependencies you already have, with no commit on your side, so the caller
+# drives this from a schedule as well as from dependency changes.
+#
+#   jobs:
+#     audit:
+#       uses: ninoverse/.github/.github/workflows/rust-audit.yml@v1
+#
+# Contract: the calling repository has a justfile exposing `audit`.
+
+on:
+  workflow_call:
+    inputs:
+      deny:
+        description: "Also run `cargo deny check advisories`. Turn off for repositories with no deny.toml."
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-audit
+      - uses: taiki-e/install-action@just
+      - run: just audit
+
+  advisories:
+    name: cargo deny advisories
+    if: inputs.deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-deny
+      - run: cargo deny check advisories

@@ -1,0 +1,130 @@
+name: Rust CI
+
+# Reusable. Called by Rust repositories in this organization; never runs on its
+# own, because `workflow_call` is the only trigger.
+#
+# Contract: the calling repository has a justfile exposing `fmt-check`, `lint`,
+# `test` and `deny`. The recipe names are the contract, not the cargo commands
+# behind them — CI calls the recipe so the command has exactly one definition.
+#
+#   jobs:
+#     ci:
+#       uses: ninoverse/.github/.github/workflows/rust-ci.yml@v1
+#       with:
+#         msrv: "1.85"
+#
+# Pin the tag, not @main. A change to @main lands in every repository at once,
+# with no pull request in any of them.
+
+on:
+  workflow_call:
+    inputs:
+      msrv:
+        description: >
+          Minimum supported Rust version, matching [workspace.package].rust-version.
+          Nothing else here would catch a change that breaks it, because
+          rust-toolchain.toml pins the channel to `stable`.
+        type: string
+        required: true
+      deny:
+        description: "Run the cargo-deny gate. Turn off for repositories with no deny.toml."
+        type: boolean
+        default: true
+      coverage:
+        description: "Build the HTML coverage report and upload it as an artifact."
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Fail on warnings from rustc itself, matching the clippy gate.
+  RUSTFLAGS: -D warnings
+
+jobs:
+  # The four merge gates, one job each so a red check names the gate that broke.
+  fmt:
+    name: Gate 1 — fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: taiki-e/install-action@just
+      - run: just fmt-check
+
+  lint:
+    name: Gate 2 — clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@just
+      - run: just lint
+
+  test:
+    name: Gate 3 — tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@just
+      - uses: taiki-e/install-action@nextest
+      - run: just test
+
+  deny:
+    name: Gate 4 — licenses and advisories
+    if: inputs.deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-deny
+      - uses: taiki-e/install-action@just
+      - run: just deny
+
+  msrv:
+    name: MSRV ${{ inputs.msrv }}
+    runs-on: ubuntu-latest
+    env:
+      # rust-toolchain.toml would otherwise win and this job would silently test
+      # stable. RUSTUP_TOOLCHAIN takes precedence over the toolchain file.
+      RUSTUP_TOOLCHAIN: ${{ inputs.msrv }}
+    steps:
+      - uses: actions/checkout@v4
+      # @master rather than @<version>: an action ref cannot be an expression,
+      # so a parameterised toolchain has to arrive as an input.
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ inputs.msrv }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Show the toolchain actually in use
+        run: rustc --version
+      - name: Check the workspace builds on the declared MSRV
+        run: cargo check --workspace --all-targets --locked
+
+  coverage:
+    name: Coverage
+    if: inputs.coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Generate HTML coverage report
+        run: cargo llvm-cov --workspace --all-features --html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html
+          path: target/llvm-cov/html/
+          retention-days: 14
