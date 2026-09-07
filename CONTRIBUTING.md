@@ -110,13 +110,47 @@ work-in-progress state to represent — draft PRs are not used.
 ## Dependency updates
 
 Renovate runs centrally for the whole organization from
-[`ninoverse/.github`](https://github.com/ninoverse/.github). A repository opts in
-by committing a one-line `renovate.json`:
+[`ninoverse/.github`](https://github.com/ninoverse/.github) — one scheduled run
+covers every repository. A repository opts in by committing a one-line
+`renovate.json`:
 
 ```json
 { "extends": ["github>ninoverse/.github"] }
 ```
 
-Repositories without that file are skipped. Review the changelog rather than
-rubber-stamping: a dependency raising *its* own minimum toolchain version is the
-usual reason a green repository suddenly goes red.
+Repositories without that file are **skipped**, not onboarded. Nothing is done
+to a repository that has not asked for it.
+
+The shared policy: everything non-breaking arrives as one grouped PR on Monday,
+majors wait for approval on the Dependency Dashboard issue, and security fixes
+ignore the schedule entirely. Review the changelog rather than rubber-stamping —
+a dependency raising *its own* minimum toolchain version is the usual reason a
+green repository suddenly goes red.
+
+### One-time setup
+
+Authentication is a **GitHub App** installed on the organization, not a personal
+access token. `GITHUB_TOKEN` cannot do this job twice over: it reaches only the
+repository it runs in, and pull requests opened with it deliberately do not
+trigger other workflows, so CI would never run on a dependency PR — the one
+thing that makes these safe to merge.
+
+The app needs these repository permissions:
+
+| Permission | Access |
+|---|---|
+| Contents | Read and write |
+| Pull requests | Read and write |
+| Issues | Read and write *(for the Dependency Dashboard)* |
+| Workflows | Read and write *(to update `.github/workflows/`)* |
+
+Install it across the organization, then set both of these **at organization
+level** so no repository duplicates them:
+
+- `RENOVATE_APP_ID` — an organization *variable*
+- `RENOVATE_APP_PRIVATE_KEY` — an organization *secret*
+
+The workflow fails immediately with a named error if either is missing, rather
+than failing obscurely inside Renovate. To try it without side effects, run it
+from the Actions tab with **dryRun** checked: it logs what it would do across
+every repository and opens nothing.
