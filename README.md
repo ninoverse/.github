@@ -35,12 +35,25 @@ job definitions in one place.
 |---|---|
 | [`rust-ci.yml`](.github/workflows/rust-ci.yml) | `fmt` · `clippy` · `test` · `deny` · MSRV · coverage artifact |
 | [`rust-audit.yml`](.github/workflows/rust-audit.yml) | `cargo audit` · `cargo deny check advisories` |
+| [`go-ci.yml`](.github/workflows/go-ci.yml) | `fmt` · `vet`+`lint` · `test -race` · `licenses`+`vuln` · go.mod floor · coverage artifact |
+| [`go-audit.yml`](.github/workflows/go-audit.yml) | `govulncheck` |
 
-**Contract:** the calling repository has a `justfile` exposing `fmt-check`,
-`lint`, `test`, `deny` and `audit`. The recipe *names* are the contract, not the
-cargo commands behind them — CI calls the recipe so each command has exactly one
-definition. The justfile itself cannot be centralized, since neither `just` nor
-`cargo` has a remote include, so adopting repositories copy it.
+**The contract is the runner recipe, never the tool behind it.** CI calls the
+recipe so each command — and each tool version pin — keeps exactly one
+definition, in the calling repository. The runner file itself cannot be
+centralized, since neither `just` nor `make` has a remote include, so adopting
+repositories copy it.
+
+| Ecosystem | Runner | Recipes the workflows call |
+|---|---|---|
+| Rust | `justfile` | `fmt-check` `lint` `test` `deny` `audit` |
+| Go | `Makefile` | `fmt-check` `vet` `lint` `test-race` `vuln` `licenses` `cover`, plus `tools-lint` `tools-test` `tools-vuln` `tools-licenses` |
+
+Go needs the `tools-*` split because its linters arrive by `go install` rather
+than as prebuilt binaries: each gate installs only what it uses, and the pinned
+`golangci-lint` version stays in the Makefile where `make lint` can also see it.
+
+### Rust
 
 `.github/workflows/ci.yml` in the calling repository:
 
@@ -88,6 +101,53 @@ jobs:
 Repositories with no `deny.toml` pass `deny: false`; `coverage: false` skips the
 coverage build.
 
+### Go
+
+```yaml
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    uses: ninoverse/.github/.github/workflows/go-ci.yml@v1
+    with:
+      go-version: "1.25" # must match the `go` directive in go.mod
+```
+
+```yaml
+name: Audit
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  push:
+    branches: [main]
+    paths: ["go.mod", "go.sum"]
+  pull_request:
+    paths: ["go.mod", "go.sum"]
+  workflow_dispatch:
+
+jobs:
+  audit:
+    uses: ninoverse/.github/.github/workflows/go-audit.yml@v1
+```
+
+Repositories with no license policy pass `licenses: false`; `coverage: false`
+skips the coverage build.
+
+The `Go <version>` job is the MSRV job's counterpart, and it needs the same care:
+it sets `GOTOOLCHAIN=local` so the `toolchain` directive in `go.mod` cannot pull
+a newer compiler and quietly build on that instead — the exact failure mode
+`RUSTUP_TOOLCHAIN` prevents on the Rust side. Every other job runs `stable`.
+
 **Pin the tag, not `@main`.** A change to `@main` lands in every repository at
 once, with no pull request in any of them.
 
@@ -99,10 +159,11 @@ the ecosystem-specific jobs stay separate anyway. `hmi-components-dioxus` settle
 it — it is Rust, but gates on `dx check` and `dx build`, so even "Rust" is not
 one shape.
 
-Name them `<ecosystem>-ci.yml` and `<ecosystem>-audit.yml`, keep the `Gate N — …`
-job names so a red check reads the same in any repository, and keep every gate
-job to a single `run:` line invoking the repository's own runner recipe —
-`just` for Rust, `make` for Go.
+Name them `<ecosystem>-ci.yml` and `<ecosystem>-audit.yml`, and keep the
+`Gate N — …` job names so a red check reads the same in any repository. Every
+gate job should reduce to invoking the repository's own runner recipe; anything
+above that line is setup, and anything the recipe could own instead — a tool
+version, a flag — belongs in the runner file, not here.
 
 ## Dependency updates
 

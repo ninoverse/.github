@@ -1,0 +1,39 @@
+name: Go Audit
+
+# Reusable. Called by Go repositories in this organization.
+#
+# Separate from go-ci.yml because it answers a different question. CI asks
+# "does this change break the module"; this asks "has the world changed under a
+# module that did not". Advisories are published against dependencies you
+# already have, with no commit on your side, so the caller drives this from a
+# schedule as well as from dependency changes.
+#
+#   jobs:
+#     audit:
+#       uses: ninoverse/.github/.github/workflows/go-audit.yml@v1
+#
+# Contract: the calling repository has a Makefile exposing `vuln` and
+# `tools-vuln`.
+#
+# One job, where rust-audit.yml has two: Rust has two advisory sources
+# (cargo-audit and cargo-deny), Go has one.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  vuln:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          # See go-ci.yml: setup-go's cache fails outright with no go.sum.
+          cache: ${{ hashFiles('go.sum') != '' }}
+      - run: make tools-vuln
+      - run: make vuln
