@@ -25,11 +25,87 @@ paragraph. `claude-mit-rust-template` keeps its own `CONTRIBUTING.md` and pull
 request template because both are dense with Rust and `just` specifics that do
 not generalize; it inherits everything else.
 
+## Reusable workflows
+
+Workflows are **not** defaultable — a repository never inherits one. They can be
+*called* instead, which costs each repository a short caller file but keeps the
+job definitions in one place.
+
+| Workflow | Gates |
+|---|---|
+| [`rust-ci.yml`](.github/workflows/rust-ci.yml) | `fmt` · `clippy` · `test` · `deny` · MSRV · coverage artifact |
+| [`rust-audit.yml`](.github/workflows/rust-audit.yml) | `cargo audit` · `cargo deny check advisories` |
+
+**Contract:** the calling repository has a `justfile` exposing `fmt-check`,
+`lint`, `test`, `deny` and `audit`. The recipe *names* are the contract, not the
+cargo commands behind them — CI calls the recipe so each command has exactly one
+definition. The justfile itself cannot be centralised, since neither `just` nor
+`cargo` has a remote include, so adopting repositories copy it.
+
+`.github/workflows/ci.yml` in the calling repository:
+
+```yaml
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Belongs in the caller: inside a called workflow, `github.workflow` still
+# resolves to the caller's name.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    uses: ninoverse/.github/.github/workflows/rust-ci.yml@v1
+    with:
+      msrv: "1.85" # must match [workspace.package].rust-version
+```
+
+`.github/workflows/audit.yml`:
+
+```yaml
+name: Audit
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  push:
+    branches: [main]
+    paths: ["**/Cargo.toml", "**/Cargo.lock", "deny.toml"]
+  pull_request:
+    paths: ["**/Cargo.toml", "**/Cargo.lock", "deny.toml"]
+  workflow_dispatch:
+
+jobs:
+  audit:
+    uses: ninoverse/.github/.github/workflows/rust-audit.yml@v1
+```
+
+Repositories with no `deny.toml` pass `deny: false`; `coverage: false` skips the
+coverage build.
+
+**Pin the tag, not `@main`.** A change to `@main` lands in every repository at
+once, with no pull request in any of them.
+
+### Adding another ecosystem
+
+Follow the same shape rather than adding a `language` input to these: toolchain
+setup, cache action and tool installers are fully disjoint across ecosystems, and
+the ecosystem-specific jobs stay separate anyway. `hmi-components-dioxus` settles
+it — it is Rust, but gates on `dx check` and `dx build`, so even "Rust" is not
+one shape.
+
+Name them `<ecosystem>-ci.yml` and `<ecosystem>-audit.yml`, keep the `Gate N — …`
+job names so a red check reads the same in any repository, and keep every gate
+job to a single `run:` line invoking the repository's own runner recipe —
+`just` for Rust, `make` for Go.
+
 ## What cannot live here
 
-GitHub only defaults the filenames above. `CODEOWNERS`, `.gitignore`,
-`.editorconfig`, linter and formatter configs, and task runner files are **not**
-defaultable and must be committed to each repository.
-
-Workflows are not defaultable either. They can be *called* instead — reusable
-workflows are added here separately.
+GitHub only defaults the community health filenames above. `CODEOWNERS`,
+`.gitignore`, `.editorconfig`, linter and formatter configs, and task runner
+files are **not** defaultable and must be committed to each repository.
