@@ -32,6 +32,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
+          # The `go` directive, which is all setup-go v5 reads from this file.
+          # govulncheck reports standard-library advisories against the version
+          # it runs on, so this deliberately matches what the repository
+          # declares rather than tracking `stable`.
           go-version-file: go.mod
           # See go-ci.yml: setup-go's cache fails outright with no go.sum.
           cache: ${{ hashFiles('go.sum') != '' }}

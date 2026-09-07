@@ -143,20 +143,33 @@ jobs:
 Repositories with no license policy pass `licenses: false`; `coverage: false`
 skips the coverage build.
 
-The `Go <version>` job is the MSRV job's counterpart, and it needs the same care:
-it sets `GOTOOLCHAIN=local` so the `toolchain` directive in `go.mod` cannot pull
-a newer compiler and quietly build on that instead — the exact failure mode
-`RUSTUP_TOOLCHAIN` prevents on the Rust side. It is the only job that ignores
-that directive, and so the only one testing the `go` floor at all.
-
-Every other job takes its toolchain from `go.mod`, not from `stable`. That is
-deliberate and it is the one place Go differs from Rust here: clippy ships with
+Every job takes its toolchain from `go.mod`, not from `stable`. That is
+deliberate, and it is the one place Go differs from Rust here: clippy ships with
 the Rust toolchain, but `golangci-lint` is pinned separately by the calling
 repository, and a pinned analyzer only understands the Go releases it was built
 against. Its bundled staticcheck parses the standard library's own source, so a
 new Go release makes it panic rather than merely miss a lint. Tracking `stable`
 would turn every repository red the week Go ships, with no commit in any of
 them. Moving to a new Go is a deliberate edit to `go.mod`.
+
+Note that `setup-go@v5` reads only the **`go` directive** from `go.mod` — it
+matches `/^go (\d+(\.\d+)*)/` and never looks at `toolchain`. The action's
+README on `main` says otherwise; that describes a later version than the one
+pinned here.
+
+The `Go <version>` job looks like the MSRV job and is not its counterpart. Rust
+needs that job because nothing on the stable toolchain enforces `rust-version`;
+Go enforces the `go` directive on every build, in every job, so the floor is
+already covered. What that job adds is the two things that are not:
+
+- Under the default `GOTOOLCHAIN=auto`, a dependency requiring a newer Go makes
+  the toolchain silently download and use it — the gates stay green while the
+  declared floor has quietly become a lie. `GOTOOLCHAIN=local` turns that into a
+  failure.
+- Passing `go-version` explicitly, rather than reading `go.mod` a seventh time,
+  checks the caller's declared floor against the file. They are the same number
+  from two sources, so drift between them surfaces here rather than going
+  unnoticed.
 
 **Pin the tag, not `@main`.** A change to `@main` lands in every repository at
 once, with no pull request in any of them.
