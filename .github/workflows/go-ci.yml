@@ -1,0 +1,145 @@
+name: Go CI
+
+# Reusable. Called by Go repositories in this organization; never runs on its
+# own, because `workflow_call` is the only trigger.
+#
+# Contract: the calling repository has a Makefile exposing `fmt-check`, `vet`,
+# `lint`, `test-race`, `vuln`, `licenses` and `cover`, plus a `tools-<gate>`
+# target installing only that gate's binary. The target names are the contract,
+# not the go commands behind them — CI calls the target so each command, and the
+# golangci-lint version pin, keeps exactly one definition.
+#
+#   jobs:
+#     ci:
+#       uses: ninoverse/.github/.github/workflows/go-ci.yml@v1
+#       with:
+#         go-version: "1.25"
+#
+# Pin the tag, not @main. A change to @main lands in every repository at once,
+# with no pull request in any of them.
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        description: >
+          Minimum supported Go version, matching the `go` directive in go.mod.
+          Nothing else here would catch a change that breaks it, because every
+          other job runs the current stable toolchain.
+        type: string
+        required: true
+      licenses:
+        description: "Run the go-licenses gate. Turn off for repositories with no license policy."
+        type: boolean
+        default: true
+      coverage:
+        description: "Build the HTML coverage report and upload it as an artifact."
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  # The four merge gates, one job each so a red check names the gate that broke.
+  fmt:
+    name: Gate 1 — fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          # setup-go's cache needs a lockfile and fails outright without one
+          # ("Dependencies lock file is not found"). A module with no
+          # dependencies has no go.sum, so guard on it — caching then turns
+          # itself on the moment the repository gains a dependency.
+          cache: ${{ hashFiles('go.sum') != '' }}
+      - run: make tools-lint
+      - run: make fmt-check
+
+  lint:
+    name: Gate 2 — lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: ${{ hashFiles('go.sum') != '' }}
+      - run: make tools-lint
+      - run: make vet
+      - run: make lint
+
+  test:
+    name: Gate 3 — tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: ${{ hashFiles('go.sum') != '' }}
+      - run: make tools-test
+      - run: make test-race
+
+  # Rust gets both halves from one `cargo deny check`; Go needs two tools, so
+  # they are two steps under one gate rather than two gates. `vuln` is not
+  # optional — a known CVE is not a policy choice — but `licenses` is, because
+  # go-licenses has no config file to express an allowlist in.
+  supply-chain:
+    name: Gate 4 — licenses and advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: ${{ hashFiles('go.sum') != '' }}
+      - run: make tools-vuln
+      - run: make vuln
+      - if: inputs.licenses
+        run: make tools-licenses
+      - if: inputs.licenses
+        run: make licenses
+
+  min-go:
+    name: Go ${{ inputs.go-version }}
+    runs-on: ubuntu-latest
+    env:
+      # The `toolchain` directive in go.mod would otherwise pull a newer
+      # compiler and this job would silently build on it, exactly as
+      # rust-toolchain.toml does to the MSRV job. GOTOOLCHAIN=local forbids the
+      # download and holds the job to the version installed below.
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache: ${{ hashFiles('go.sum') != '' }}
+      - name: Show the toolchain actually in use
+        run: go version
+      - name: Check the module builds on the declared floor
+        run: go build ./...
+
+  coverage:
+    name: Coverage
+    if: inputs.coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: ${{ hashFiles('go.sum') != '' }}
+      - run: make tools-test
+      - name: Generate the coverage profile
+        run: make cover
+      - name: Render it as HTML
+        run: go tool cover -html=coverage.txt -o coverage.html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html
+          path: coverage.html
+          retention-days: 14
