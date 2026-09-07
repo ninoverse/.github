@@ -1,0 +1,132 @@
+name: Go Bump Version
+
+# Reusable. Called by Go repositories in this organization on every push to the
+# default branch; never runs on its own, because `workflow_call` is the only
+# trigger.
+#
+#   jobs:
+#     bump:
+#       uses: ninoverse/.github/.github/workflows/go-bump-version.yml@v1
+#       with:
+#         app-id: ${{ vars.RELEASE_APP_ID }}
+#       secrets:
+#         app-private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+#
+# Separate from rust-bump-version.yml rather than one workflow with an
+# `ecosystem` input. The conventional-commit parsing is the same, but Go modules
+# carry no version field — SemVer git tags *are* the version — so this job
+# derives the next version from the existing tags and writes nothing, where the
+# Rust one edits Cargo.toml, commits, and must then avoid bumping on its own
+# commit. An `if:` ladder branching on that inside a workflow that pushes to the
+# default branch is worse than the duplicated parser.
+#
+# The GitHub App is not optional and not interchangeable with GITHUB_TOKEN: a
+# tag pushed with GITHUB_TOKEN deliberately does not trigger other workflows, so
+# the release workflow watching for that tag would never fire.
+#
+# Pin the tag, not @main.
+
+on:
+  workflow_call:
+    inputs:
+      app-id:
+        description: "Release GitHub App id, normally vars.RELEASE_APP_ID."
+        type: string
+        required: true
+    secrets:
+      app-private-key:
+        description: "Release GitHub App private key, normally secrets.RELEASE_APP_PRIVATE_KEY."
+        required: true
+
+# Read-only on purpose: the checkout and the push both authenticate with the app
+# token below, so GITHUB_TOKEN never needs write access.
+permissions:
+  contents: read
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the release app credentials are configured
+        env:
+          APP_ID: ${{ inputs.app-id }}
+          PRIVATE_KEY: ${{ secrets.app-private-key }}
+        run: |
+          if [ -z "$APP_ID" ] || [ -z "$PRIVATE_KEY" ]; then
+            echo "::error::RELEASE_APP_ID or RELEASE_APP_PRIVATE_KEY is not set." \
+                 "Set both at organization level — see ninoverse/.github CONTRIBUTING.md."
+            exit 1
+          fi
+
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          app-id: ${{ inputs.app-id }}
+          private-key: ${{ secrets.app-private-key }}
+
+      - uses: actions/checkout@v4
+        with:
+          # Full history and tags: the previous tag is the only record of the
+          # current version.
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Determine the bump type from the commit subject
+        id: bump
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          msg=$(echo "$COMMIT_MSG" | head -n 1)
+          bump="skip"
+
+          echo "Analyzing commit subject: $msg"
+
+          if [[ "$msg" =~ ^[a-z]+(\([a-z0-9_-]+\))?!: ]] || [[ "$COMMIT_MSG" == *"BREAKING CHANGE"* ]]; then
+            bump="major"
+          elif [[ "$msg" =~ ^feat(\([a-z0-9_-]+\))?: ]]; then
+            bump="minor"
+          elif [[ "$msg" =~ ^(fix|perf|refactor|revert|style|chore|docs)(\([a-z0-9_-]+\))?: ]]; then
+            bump="patch"
+          fi
+
+          echo "Computed bump=$bump"
+          echo "type=$bump" >> "$GITHUB_OUTPUT"
+
+      - name: Compute the next version
+        id: ver
+        if: steps.bump.outputs.type != 'skip'
+        env:
+          BUMP_TYPE: ${{ steps.bump.outputs.type }}
+        run: |
+          set -euo pipefail
+          latest=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1)
+          if [ -z "$latest" ]; then
+            latest="v0.0.0"
+          fi
+          echo "Latest tag: $latest"
+
+          IFS='.' read -r major minor patch <<< "${latest#v}"
+
+          case "$BUMP_TYPE" in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+          esac
+
+          echo "Next version: v${major}.${minor}.${patch}"
+          echo "version=v${major}.${minor}.${patch}" >> "$GITHUB_OUTPUT"
+
+      - name: Tag and push
+        if: steps.bump.outputs.type != 'skip'
+        env:
+          GIT_TAG: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          if git rev-parse "$GIT_TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $GIT_TAG already exists."
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$GIT_TAG" -m "chore: release $GIT_TAG"
+          git push origin "$GIT_TAG"

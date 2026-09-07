@@ -1,0 +1,85 @@
+name: Cloud Run Release
+
+# Reusable, and the one workflow here that is genuinely ecosystem-agnostic:
+# `gcloud run deploy --source .` hands the repository to Cloud Build, which
+# builds the root Dockerfile. Nothing in this file knows or cares what language
+# is inside it.
+#
+#   jobs:
+#     deploy:
+#       uses: ninoverse/.github/.github/workflows/release-cloudrun.yml@v1
+#       with:
+#         service: my-service
+#         project: ${{ vars.GCP_PROJECT }}
+#         region: ${{ vars.GCP_REGION }}
+#       secrets:
+#         gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+#
+# The caller supplies the trigger, normally a push of the `v*` tag that
+# <ecosystem>-bump-version.yml creates.
+#
+# Pin the tag, not @main.
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        description: "Cloud Run service name to deploy to."
+        type: string
+        required: true
+      project:
+        description: "Google Cloud project id, normally vars.GCP_PROJECT."
+        type: string
+        required: true
+      region:
+        description: "Google Cloud region, normally vars.GCP_REGION."
+        type: string
+        required: true
+      allow-unauthenticated:
+        description: "Serve the revision publicly. Turn off for an internal service."
+        type: boolean
+        default: true
+    secrets:
+      gcp-service-account:
+        description: >
+          Service account JSON. Needs Cloud Run Admin, Service Account User, and
+          Cloud Build plus Artifact Registry access for `--source` builds.
+        required: true
+
+# No `id-token: write`: this authenticates with a service account key, not
+# Workload Identity Federation, so nothing here mints an OIDC token.
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.gcp-service-account }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Run
+        env:
+          SERVICE: ${{ inputs.service }}
+          PROJECT: ${{ inputs.project }}
+          REGION: ${{ inputs.region }}
+          ALLOW_UNAUTHENTICATED: ${{ inputs.allow-unauthenticated }}
+        run: |
+          set -euo pipefail
+          auth_flag="--no-allow-unauthenticated"
+          if [ "$ALLOW_UNAUTHENTICATED" = "true" ]; then
+            auth_flag="--allow-unauthenticated"
+          fi
+
+          # Cloud Run injects PORT; the server must listen on it.
+          gcloud run deploy "$SERVICE" \
+            --source . \
+            --project "$PROJECT" \
+            --region "$REGION" \
+            "$auth_flag" \
+            --quiet

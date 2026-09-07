@@ -165,6 +165,71 @@ gate job should reduce to invoking the repository's own runner recipe; anything
 above that line is setup, and anything the recipe could own instead — a tool
 version, a flag — belongs in the runner file, not here.
 
+## Release workflows
+
+| Workflow | Does |
+|---|---|
+| [`rust-bump-version.yml`](.github/workflows/rust-bump-version.yml) | Bumps `[workspace.package].version` from the commit type, commits, pushes a `v*` tag |
+| [`go-bump-version.yml`](.github/workflows/go-bump-version.yml) | Derives the next version from the existing tags and pushes a `v*` tag |
+| [`release-cloudrun.yml`](.github/workflows/release-cloudrun.yml) | `gcloud run deploy --source .` on a tag |
+
+The two bump workflows are split by ecosystem for the same reason the CI ones
+are, though the seam is different. The conventional-commit parser is identical;
+what differs is that a Go module has no version field — SemVer git tags *are*
+the version — so it writes nothing, while the Rust one edits `Cargo.toml`,
+commits, and must then skip its own commit on the next push. Branching on that
+inside a workflow that pushes to the default branch is worse than duplicating
+twenty lines of parser.
+
+`release-cloudrun.yml` is not split, because it genuinely is one shape:
+`--source .` hands the repository to Cloud Build, which builds the root
+Dockerfile, and nothing in the workflow knows what is inside it.
+
+```yaml
+name: Bump Version and Tag
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  bump:
+    uses: ninoverse/.github/.github/workflows/rust-bump-version.yml@v1
+    with:
+      app-id: ${{ vars.RELEASE_APP_ID }}
+    secrets:
+      app-private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+```
+
+```yaml
+name: Deploy to Cloud Run on Tag Push
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+jobs:
+  deploy:
+    uses: ninoverse/.github/.github/workflows/release-cloudrun.yml@v1
+    with:
+      service: my-service
+      project: ${{ vars.GCP_PROJECT }}
+      region: ${{ vars.GCP_REGION }}
+    secrets:
+      gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+```
+
+**Secrets do not cross into a called workflow on their own.** Every secret is
+declared in the called workflow and passed explicitly by the caller, as above.
+`secrets: inherit` would also work, but it hands over every secret the caller
+has rather than the one the workflow asked for.
+
+**A GitHub App is required, and `GITHUB_TOKEN` is not a substitute.** A tag
+pushed with `GITHUB_TOKEN` deliberately does not trigger other workflows, so the
+Cloud Run deploy watching for that tag would never fire. See
+[CONTRIBUTING.md](CONTRIBUTING.md#releases) for what the app needs and which
+organization variable and secret hold its credentials.
+
 ## Dependency updates
 
 [`default.json`](default.json) is the shared Renovate preset, and
