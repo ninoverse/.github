@@ -1,0 +1,28 @@
+name: Feature request
+description: Propose something this project should do
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve
+      description: >
+        Describe the problem, not the solution. These projects bias toward
+        simplicity — anything speculative is likely to be declined.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you considered instead
+      description: Including doing nothing, and why that is not enough.
+    validations:
+      required: false
