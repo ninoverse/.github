@@ -146,7 +146,17 @@ skips the coverage build.
 The `Go <version>` job is the MSRV job's counterpart, and it needs the same care:
 it sets `GOTOOLCHAIN=local` so the `toolchain` directive in `go.mod` cannot pull
 a newer compiler and quietly build on that instead — the exact failure mode
-`RUSTUP_TOOLCHAIN` prevents on the Rust side. Every other job runs `stable`.
+`RUSTUP_TOOLCHAIN` prevents on the Rust side. It is the only job that ignores
+that directive, and so the only one testing the `go` floor at all.
+
+Every other job takes its toolchain from `go.mod`, not from `stable`. That is
+deliberate and it is the one place Go differs from Rust here: clippy ships with
+the Rust toolchain, but `golangci-lint` is pinned separately by the calling
+repository, and a pinned analyzer only understands the Go releases it was built
+against. Its bundled staticcheck parses the standard library's own source, so a
+new Go release makes it panic rather than merely miss a lint. Tracking `stable`
+would turn every repository red the week Go ships, with no commit in any of
+them. Moving to a new Go is a deliberate edit to `go.mod`.
 
 **Pin the tag, not `@main`.** A change to `@main` lands in every repository at
 once, with no pull request in any of them.
