@@ -1,0 +1,67 @@
+{
+  "description": "Shared Renovate policy for every ninoverse repository. Extend it with { \"extends\": [\"github>ninoverse/.github\"] } — a repository with no renovate.json is skipped by the central run, so this file is opt-in. Presets carry no $schema: they are merged into the consumer's config rather than validated as one.",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits"
+  ],
+  "timezone": "Etc/UTC",
+  "schedule": ["before 6am on monday"],
+  "labels": ["dependencies"],
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "deps",
+  "commitMessageLowerCase": "auto",
+  "rangeStrategy": "bump",
+  "prConcurrentLimit": 3,
+  "prHourlyLimit": 0,
+  "packageRules": [
+    {
+      "description": "One PR a week for everything non-breaking. A PR per dependency is noise, and each one costs a full CI run.",
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "non-major dependencies",
+      "groupSlug": "non-major"
+    },
+    {
+      "description": "Actions move together and are low risk; keeping them in one PR keeps the workflow diffs readable.",
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions",
+      "groupSlug": "actions"
+    },
+    {
+      "description": "Majors stay separate — they are the ones that need a changelog read, and a minimum-toolchain job is the usual thing they break.",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Never touch the MSRV job's toolchain. It is pinned to the rust-version in Cargo.toml on purpose; bumping it would leave the job green while it silently stopped testing the MSRV at all. Raising the MSRV is a deliberate change made in Cargo.toml and clippy.toml together. Matches nothing in non-Rust repositories.",
+      "matchManagers": ["github-actions"],
+      "matchDepNames": ["dtolnay/rust-toolchain"],
+      "enabled": false
+    }
+  ],
+  "customManagers": [
+    {
+      "description": "The github-actions manager does not read `with:` inputs, so a pinned Renovate version is picked up from its annotation comment instead.",
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z-]+?) depName=(?<depName>[^\\s]+?)\\s+renovate-version: (?<currentValue>[^\\s]+)"
+      ],
+      "versioningTemplate": "semver"
+    }
+  ],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on the first day of the month"],
+    "commitMessageAction": "refresh"
+  },
+  "vulnerabilityAlerts": {
+    "description": "Security fixes ignore the weekly window and the major-approval gate — waiting until Monday for a known advisory defeats the point.",
+    "labels": ["security"],
+    "schedule": ["at any time"],
+    "dependencyDashboardApproval": false
+  },
+  "github-actions": {
+    "pinDigests": false
+  }
+}

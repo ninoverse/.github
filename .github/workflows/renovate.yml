@@ -1,0 +1,106 @@
+name: Renovate
+
+# Central and self-hosted: one run updates every ninoverse repository that has
+# opted in, on this repository's own Actions minutes. Actions is unmetered for
+# public repositories, so updating the private ones costs nothing.
+#
+# A repository opts in with a one-line renovate.json extending the shared
+# preset in default.json. RENOVATE_REQUIRE_CONFIG below means a repository
+# without that file is skipped rather than onboarded, so adoption is never
+# something this workflow does to a repository on its own.
+#
+# Requires a GitHub App installed on the organisation — see CONTRIBUTING.md.
+# GITHUB_TOKEN cannot be used: it reaches only this repository, and pull
+# requests opened with it deliberately do not trigger other workflows, so CI
+# would never run on a dependency PR, which is the one thing that makes these
+# safe to merge.
+
+on:
+  schedule:
+    - cron: "0 4 * * 1" # Mondays 04:00 UTC, inside the preset's "before 6am on monday" window
+  workflow_dispatch:
+    inputs:
+      dryRun:
+        description: "Run without creating branches, PRs or issues"
+        type: boolean
+        default: false
+      logLevel:
+        description: "Renovate log level"
+        type: choice
+        options: [info, debug]
+        default: info
+  # Re-run when the shared config changes, so a mistake surfaces immediately
+  # rather than next Monday — and a mistake here now affects every repository.
+  push:
+    branches: [main]
+    paths:
+      - default.json
+      - renovate.json
+      - .github/workflows/renovate.yml
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  renovate:
+    name: Central Renovate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fail early if the app credentials are missing
+        env:
+          APP_ID: ${{ vars.RENOVATE_APP_ID }}
+          PRIVATE_KEY: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
+        run: |
+          if [ -z "${APP_ID}" ] || [ -z "${PRIVATE_KEY}" ]; then
+            echo "::error::RENOVATE_APP_ID (variable) and RENOVATE_APP_PRIVATE_KEY (secret) must both be set at organisation level. See CONTRIBUTING.md."
+            exit 1
+          fi
+
+      # `owner` with `repositories` omitted mints a token scoped to the whole
+      # installation, which is what makes one run cover every repository.
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          app-id: ${{ vars.RENOVATE_APP_ID }}
+          private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      # dryRun is an enum (extract | lookup | full), not a boolean, and there is
+      # no way to express "unset" from an `env:` expression — it would resolve
+      # to an empty string, which is not a valid value. So set it only when it
+      # is actually wanted.
+      - name: Enable dry run
+        if: inputs.dryRun
+        run: echo "RENOVATE_DRY_RUN=full" >> "$GITHUB_ENV"
+
+      # The action and the tool it runs are versioned independently: this action
+      # is v46, while Renovate itself is at 44.x. Left alone the action supplies
+      # its own default (a floating major), so the version actually doing the
+      # work would be invisible here and would change without a diff. Pinning it
+      # exactly makes it reviewable; the annotation below is what lets Renovate
+      # keep the pin current, via the customManager in default.json.
+      - uses: renovatebot/github-action@v46.2.6
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          # renovate: datasource=docker depName=ghcr.io/renovatebot/renovate
+          renovate-version: 44.66.1
+        env:
+          RENOVATE_PLATFORM: github
+          RENOVATE_AUTODISCOVER: "true"
+          # The app is only installed on this organisation, but the filter keeps
+          # that true by configuration rather than by installation state.
+          RENOVATE_AUTODISCOVER_FILTER: "ninoverse/*"
+          # Skip repositories with no renovate.json instead of onboarding them.
+          RENOVATE_ONBOARDING: "false"
+          RENOVATE_REQUIRE_CONFIG: "required"
+          # App-only. Commits go through GitHub's API, so they are signed and
+          # GitHub sets the author itself — which is why no gitAuthor is
+          # configured anywhere in this repository.
+          RENOVATE_PLATFORM_COMMIT: "enabled"
+          LOG_LEVEL: ${{ inputs.logLevel || 'info' }}

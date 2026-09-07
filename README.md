@@ -104,6 +104,37 @@ job names so a red check reads the same in any repository, and keep every gate
 job to a single `run:` line invoking the repository's own runner recipe —
 `just` for Rust, `make` for Go.
 
+## Dependency updates
+
+[`default.json`](default.json) is the shared Renovate preset, and
+[`.github/workflows/renovate.yml`](.github/workflows/renovate.yml) runs Renovate
+**once for the whole organization** rather than once per repository. Actions is
+unmetered for public repositories, so updating the private ones costs nothing.
+
+A repository opts in with a one-line `renovate.json`:
+
+```json
+{ "extends": ["github>ninoverse/.github"] }
+```
+
+Repositories without that file are skipped, not onboarded. Renovate is
+manager-based rather than language-based — it detects `Cargo.toml`, `go.mod`,
+`package.json`, `Dockerfile` and workflow files independently in each repository
+— so one preset serves every ecosystem. Rules that name a Rust dependency simply
+never match elsewhere.
+
+Two consequences worth knowing before changing `default.json`:
+
+- **One cron is a cadence floor.** Per-repository `schedule:` still narrows, but
+  no repository updates more often than the central run fires.
+- **One failure point.** A bad preset affects every repository at once, which is
+  why the workflow re-runs on a push to `default.json` instead of waiting for
+  Monday.
+
+Setup is a GitHub App installed on the organization, with `RENOVATE_APP_ID` and
+`RENOVATE_APP_PRIVATE_KEY` set at organization level. See
+[`CONTRIBUTING.md`](CONTRIBUTING.md#one-time-setup).
+
 ## What cannot live here
 
 GitHub only defaults the community health filenames above. `CODEOWNERS`,
