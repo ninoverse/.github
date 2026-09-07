@@ -100,7 +100,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # @master rather than @<version>: an action ref cannot be an expression,
-      # so a parameterised toolchain has to arrive as an input.
+      # so a parameterized toolchain has to arrive as an input.
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ inputs.msrv }}

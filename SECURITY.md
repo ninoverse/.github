@@ -17,9 +17,8 @@ Please include what you can of: the affected repository and version or commit,
 the impact, and the smallest reproduction you have. A partial report is still
 worth sending.
 
-Expect an acknowledgement within a week. If the report is valid you will get an
-estimated fix timeline, and credit in the published advisory unless you ask
-otherwise.
+If the report is valid you will get an estimated fix timeline, and credit in the
+published advisory unless you ask otherwise.
 
 ## Supported versions
 

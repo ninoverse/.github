@@ -39,7 +39,7 @@ job definitions in one place.
 **Contract:** the calling repository has a `justfile` exposing `fmt-check`,
 `lint`, `test`, `deny` and `audit`. The recipe *names* are the contract, not the
 cargo commands behind them — CI calls the recipe so each command has exactly one
-definition. The justfile itself cannot be centralised, since neither `just` nor
+definition. The justfile itself cannot be centralized, since neither `just` nor
 `cargo` has a remote include, so adopting repositories copy it.
 
 `.github/workflows/ci.yml` in the calling repository:
