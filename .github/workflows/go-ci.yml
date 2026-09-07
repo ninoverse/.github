@@ -25,7 +25,8 @@ on:
         description: >
           Minimum supported Go version, matching the `go` directive in go.mod.
           Nothing else here would catch a change that breaks it, because every
-          other job runs the current stable toolchain.
+          other job resolves go.mod's `toolchain` directive instead, which is
+          normally higher.
         type: string
         required: true
       licenses:
@@ -42,6 +43,15 @@ permissions:
 
 jobs:
   # The four merge gates, one job each so a red check names the gate that broke.
+  #
+  # Every gate resolves its toolchain from go.mod rather than tracking `stable`.
+  # golangci-lint is pinned by the calling repository, and a pinned analyzer
+  # only understands the Go releases it was built against — its bundled
+  # staticcheck parses the standard library's own source, so a new Go release
+  # makes it panic outright, not merely miss a lint. Tracking `stable` would
+  # therefore turn every repository red the week Go ships, with no commit in
+  # any of them: the same drift centralizing these workflows exists to remove.
+  # Moving to a new Go release stays a deliberate edit to go.mod.
   fmt:
     name: Gate 1 — fmt
     runs-on: ubuntu-latest
@@ -49,7 +59,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: stable
+          # Resolves the `toolchain` directive if go.mod has one, else the `go`
+          # directive.
+          go-version-file: go.mod
           # setup-go's cache needs a lockfile and fails outright without one
           # ("Dependencies lock file is not found"). A module with no
           # dependencies has no go.sum, so guard on it — caching then turns
@@ -65,7 +77,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: stable
+          go-version-file: go.mod
           cache: ${{ hashFiles('go.sum') != '' }}
       - run: make tools-lint
       - run: make vet
@@ -78,7 +90,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: stable
+          go-version-file: go.mod
           cache: ${{ hashFiles('go.sum') != '' }}
       - run: make tools-test
       - run: make test-race
@@ -94,7 +106,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: stable
+          go-version-file: go.mod
           cache: ${{ hashFiles('go.sum') != '' }}
       - run: make tools-vuln
       - run: make vuln
@@ -107,10 +119,12 @@ jobs:
     name: Go ${{ inputs.go-version }}
     runs-on: ubuntu-latest
     env:
-      # The `toolchain` directive in go.mod would otherwise pull a newer
-      # compiler and this job would silently build on it, exactly as
-      # rust-toolchain.toml does to the MSRV job. GOTOOLCHAIN=local forbids the
-      # download and holds the job to the version installed below.
+      # The one job that ignores the `toolchain` directive, and so the only one
+      # that tests the `go` directive at all. Without GOTOOLCHAIN=local the
+      # directive pulls a newer compiler and this job silently builds on it,
+      # exactly as rust-toolchain.toml does to the MSRV job — green, and testing
+      # nothing. `local` forbids the download and holds it to the version
+      # installed below.
       GOTOOLCHAIN: local
     steps:
       - uses: actions/checkout@v4
@@ -131,7 +145,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: stable
+          go-version-file: go.mod
           cache: ${{ hashFiles('go.sum') != '' }}
       - run: make tools-test
       - name: Generate the coverage profile

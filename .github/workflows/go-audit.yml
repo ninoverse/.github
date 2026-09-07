@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: stable
+          go-version-file: go.mod
           # See go-ci.yml: setup-go's cache fails outright with no go.sum.
           cache: ${{ hashFiles('go.sum') != '' }}
       - run: make tools-vuln
