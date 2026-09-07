@@ -23,10 +23,11 @@ on:
     inputs:
       go-version:
         description: >
-          Minimum supported Go version, matching the `go` directive in go.mod.
-          Nothing else here would catch a change that breaks it, because every
-          other job resolves go.mod's `toolchain` directive instead, which is
-          normally higher.
+          The `go` directive in go.mod, repeated. Every other job reads that same
+          directive out of the file, so this is deliberately redundant: it is an
+          assertion, checked against the file on every run. Bump go.mod without
+          bumping this and the floor job installs the older toolchain, hits
+          go.mod's own requirement, and fails by name — which is the point.
         type: string
         required: true
       licenses:
@@ -59,8 +60,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          # Resolves the `toolchain` directive if go.mod has one, else the `go`
-          # directive.
+          # Reads the `go` directive, and only that: setup-go v5 matches
+          # /^go (\d+(\.\d+)*)/ and never looks at `toolchain`. Its README on
+          # main describes reading `toolchain` too — that is a later version
+          # than the one pinned here, so do not rely on it.
           go-version-file: go.mod
           # setup-go's cache needs a lockfile and fails outright without one
           # ("Dependencies lock file is not found"). A module with no
@@ -119,12 +122,19 @@ jobs:
     name: Go ${{ inputs.go-version }}
     runs-on: ubuntu-latest
     env:
-      # The one job that ignores the `toolchain` directive, and so the only one
-      # that tests the `go` directive at all. Without GOTOOLCHAIN=local the
-      # directive pulls a newer compiler and this job silently builds on it,
-      # exactly as rust-toolchain.toml does to the MSRV job — green, and testing
-      # nothing. `local` forbids the download and holds it to the version
-      # installed below.
+      # This is not the MSRV job's equivalent, however much it looks like one.
+      # Rust needs that job because nothing on the stable toolchain enforces
+      # rust-version; Go enforces the `go` directive on every build, in every
+      # job here, so the floor is already covered.
+      #
+      # What this job adds is the two things that are not covered. Under the
+      # default GOTOOLCHAIN=auto a dependency requiring a newer Go makes the
+      # toolchain silently download and use it, so the gates go green while the
+      # declared floor has quietly become a lie; `local` forbids the download
+      # and turns that into a failure. And installing inputs.go-version rather
+      # than reading go.mod checks the caller's declared floor against the file
+      # — they are the same number from two sources, so drift between them
+      # surfaces here instead of going unnoticed.
       GOTOOLCHAIN: local
     steps:
       - uses: actions/checkout@v4
@@ -134,7 +144,7 @@ jobs:
           cache: ${{ hashFiles('go.sum') != '' }}
       - name: Show the toolchain actually in use
         run: go version
-      - name: Check the module builds on the declared floor
+      - name: Check the module builds with no toolchain upgrade
         run: go build ./...
 
   coverage:
