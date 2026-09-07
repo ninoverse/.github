@@ -154,3 +154,40 @@ The workflow fails immediately with a named error if either is missing, rather
 than failing obscurely inside Renovate. To try it without side effects, run it
 from the Actions tab with **dryRun** checked: it logs what it would do across
 every repository and opens nothing.
+
+## Releases
+
+Versions are not chosen by hand. A push to `main` is read as a Conventional
+Commit and bumped accordingly — `feat` minor, `fix`/`perf`/`refactor`/`chore`
+and friends patch, a `!` or `BREAKING CHANGE` major — and a `v*` tag is pushed.
+Anything else, including a merge commit that does not follow the format, bumps
+nothing. So the commit convention above is not only documentation: it decides
+the version number.
+
+Repositories opt in by calling the shared workflows; see the
+[README](README.md#release-workflows) for the caller files. Deployment, where a
+repository has one, triggers off that tag rather than off the push.
+
+### One-time setup
+
+A second **GitHub App**, separate from Renovate's. Both push, but this one
+pushes to `main`, and a dependency bot should not hold that.
+
+| Permission | Access | Why |
+|---|---|---|
+| Contents | Read and write | Push the release commit and the tag |
+
+Install it across the organization, then set both **at organization level**:
+
+- `RELEASE_APP_ID` — an organization *variable*
+- `RELEASE_APP_PRIVATE_KEY` — an organization *secret*
+
+`GITHUB_TOKEN` cannot stand in. A tag pushed with it deliberately does not
+trigger other workflows, so a deploy watching for that tag would never fire.
+
+If `main` is protected, the app also needs permission to bypass the rule — a
+push ruleset with the app in its bypass list. Without that, every bump run fails
+at the push and nothing is ever tagged.
+
+The workflows fail immediately with a named error if either credential is
+missing, rather than failing obscurely inside the token action.
