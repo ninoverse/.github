@@ -194,6 +194,7 @@ version, a flag — belongs in the runner file, not here.
 |---|---|
 | [`rust-bump-version.yml`](.github/workflows/rust-bump-version.yml) | Bumps `[workspace.package].version` from the commit type, commits, pushes a `v*` tag |
 | [`go-bump-version.yml`](.github/workflows/go-bump-version.yml) | Derives the next version from the existing tags and pushes a `v*` tag |
+| [`rust-release.yml`](.github/workflows/rust-release.yml) | Builds one static binary per target on a tag and publishes them with generated notes |
 | [`release-cloudrun.yml`](.github/workflows/release-cloudrun.yml) | `gcloud run deploy --source .` on a tag |
 
 The two bump workflows are split by ecosystem for the same reason the CI ones
@@ -207,6 +208,21 @@ twenty lines of parser.
 `release-cloudrun.yml` is not split, because it genuinely is one shape:
 `--source .` hands the repository to Cloud Build, which builds the root
 Dockerfile, and nothing in the workflow knows what is inside it.
+
+`rust-release.yml` is the other half of a tag for a repository that ships a
+binary rather than a deployment: the bump workflow pushes the tag, this one
+builds it. Its contract is the runner recipe like the CI workflows' is —
+`just dist <target>` — and it derives each target's runner itself, because
+every target is built on the architecture it runs on, and a caller pairing the
+two by hand could only get it wrong. Assets are named `<binary>-<target>` and
+nothing else, since the tag is already in the download URL and anything
+fetching one builds that URL by hand.
+
+The `extra-notes` input is markdown the calling repository computes about
+itself, prepended above the generated changelog. It is an input and never a
+script this workflow runs out of the caller: a shared workflow executing
+repository-supplied code inside the run holding the organization's token widens
+the blast radius to every repository at once.
 
 ```yaml
 name: Bump Version and Tag
@@ -222,6 +238,48 @@ jobs:
       app-id: ${{ vars.RELEASE_APP_ID }}
     secrets:
       app-private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+```
+
+```yaml
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+# Belongs in the caller: a re-run of the same tag must not race the first, and
+# it queues rather than cancels because cancelling between the upload and the
+# release leaves a tag with some of its assets and no release to hold them.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    uses: ninoverse/.github/.github/workflows/rust-release.yml@v1
+    with:
+      binary: my-tool
+      targets: x86_64-unknown-linux-musl,aarch64-unknown-linux-musl,aarch64-apple-darwin
+```
+
+A repository with something to say about its own release computes it in a job
+of its own and passes it through:
+
+```yaml
+jobs:
+  notes:
+    runs-on: ubuntu-latest
+    outputs:
+      extra: ${{ steps.notes.outputs.extra }}
+    steps: [...]
+
+  release:
+    needs: notes
+    uses: ninoverse/.github/.github/workflows/rust-release.yml@v1
+    with:
+      binary: my-tool
+      targets: x86_64-unknown-linux-musl
+      extra-notes: ${{ needs.notes.outputs.extra }}
 ```
 
 ```yaml

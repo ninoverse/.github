@@ -1,0 +1,262 @@
+name: Rust Release
+
+# Reusable. Called by Rust repositories in this organization when a `v*` tag is
+# pushed; never runs on its own, because `workflow_call` is the only trigger.
+#
+# Builds one static binary per target, attaches them to the tag's GitHub release
+# alongside a SHA256SUMS, and writes the release body: the caller's
+# `extra-notes` first, then the conventional-commit changelog since the previous
+# tag.
+#
+# Contract: the calling repository has a justfile exposing `dist <target>`,
+# which builds that target into `target/<target>/release/<binary>`. The recipe
+# name is the contract, not the cargo command behind it — CI calls the recipe so
+# the build has exactly one definition, in the calling repository.
+#
+#   jobs:
+#     release:
+#       uses: ninoverse/.github/.github/workflows/rust-release.yml@v1
+#       with:
+#         binary: agentcfg
+#         targets: x86_64-unknown-linux-musl,aarch64-unknown-linux-musl,aarch64-apple-darwin
+#
+# Assets are named `<binary>-<target>` and nothing else — the tag is already in
+# the download URL. Downstream consumers build that URL by hand, so renaming an
+# asset breaks them all at once. That naming lives here rather than in each
+# caller's justfile precisely so one repository cannot drift from it.
+#
+# Concurrency belongs in the caller, not here: inside a called workflow,
+# `github.workflow` still resolves to the caller's name.
+#
+# The tag this runs on is the one `rust-bump-version.yml` pushes. That only
+# works because that workflow pushes with a GitHub App token: a tag pushed with
+# GITHUB_TOKEN deliberately does not trigger other workflows, so a caller
+# watching for the tag would never fire.
+#
+# Pin the tag, not @main. A change to @main lands in every repository at once,
+# with no pull request in any of them.
+
+on:
+  workflow_call:
+    inputs:
+      binary:
+        description: >
+          Name of the binary cargo produces, used to find it under
+          target/<target>/release/ and to name each published asset.
+        type: string
+        required: true
+      targets:
+        description: >
+          Comma-separated rustc target triples to build and publish, one asset
+          each. Every target must be one this workflow knows a native runner
+          for; see the case statement in the matrix job.
+        type: string
+        required: true
+      extra-notes:
+        description: >
+          Markdown the calling repository computed about itself, prepended above
+          the changelog. Empty — the default — omits the section entirely. It is
+          an input and never a script this workflow runs out of the caller: a
+          shared workflow executing repository-supplied code inside the run
+          holding the organization's token widens the blast radius to every
+          repository at once.
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Expanding the target list here rather than in each caller keeps the runner
+  # mapping in one place. Every target builds on the architecture it runs on, so
+  # there is no cross-linker, no `cross` and no zig — which is also why the
+  # runner is derived rather than being a second input a caller could pair
+  # wrongly.
+  matrix:
+    name: Plan the build
+    runs-on: ubuntu-latest
+    outputs:
+      include: ${{ steps.plan.outputs.include }}
+    steps:
+      - name: Map each target to the runner that builds it natively
+        id: plan
+        env:
+          TARGETS: ${{ inputs.targets }}
+        run: |
+          set -euo pipefail
+          rows=()
+          IFS=',' read -ra requested <<< "${TARGETS}"
+          for target in "${requested[@]}"; do
+            target="$(echo "${target}" | tr -d '[:space:]')"
+            [ -n "${target}" ] || continue
+            case "${target}" in
+              x86_64-unknown-linux-musl | x86_64-unknown-linux-gnu)
+                runner=ubuntu-latest ;;
+              aarch64-unknown-linux-musl | aarch64-unknown-linux-gnu)
+                runner=ubuntu-24.04-arm ;;
+              x86_64-apple-darwin)
+                runner=macos-13 ;;
+              aarch64-apple-darwin)
+                runner=macos-latest ;;
+              *)
+                echo "::error::No runner in this organization builds ${target} natively." \
+                     "Add it to the case statement in rust-release.yml, or drop it from the caller's targets."
+                exit 1 ;;
+            esac
+            rows+=("$(jq -cn --arg target "${target}" --arg runner "${runner}" '{$target, $runner}')")
+          done
+
+          if [ ${#rows[@]} -eq 0 ]; then
+            echo "::error::targets is empty. Pass at least one rustc target triple."
+            exit 1
+          fi
+
+          include=$(printf '%s\n' "${rows[@]}" | jq -cs '.')
+          echo "Building: ${include}"
+          echo "include=${include}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: matrix
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      # Every row is built and published, so one failure must not cancel the
+      # rest — a partial upload is recoverable by re-running, a cancelled one
+      # hides which target actually broke.
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.matrix.outputs.include) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: taiki-e/install-action@just
+
+      - name: Build
+        env:
+          TARGET: ${{ matrix.target }}
+        run: just dist "${TARGET}"
+
+      - name: Name it after its target
+        env:
+          BINARY: ${{ inputs.binary }}
+          TARGET: ${{ matrix.target }}
+        run: mv "target/${TARGET}/release/${BINARY}" "${BINARY}-${TARGET}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.binary }}-${{ matrix.target }}
+          path: ${{ inputs.binary }}-${{ matrix.target }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    name: Publish
+    runs-on: ubuntu-latest
+    permissions:
+      # To create the release and attach the binaries to it.
+      contents: write
+    steps:
+      # Full history and tags: the changelog is a range against the previous
+      # tag, and `git describe` cannot find one in the shallow clone checkout
+      # defaults to.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ${{ inputs.binary }}-*
+          merge-multiple: true
+
+      - name: Write the changelog
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          previous=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)
+          if [ -n "${previous}" ]; then
+            echo "Changelog covers ${previous}..${TAG}"
+            range="${previous}..${TAG}"
+          else
+            echo "No previous tag; changelog covers all history up to ${TAG}"
+            range="${TAG}"
+          fi
+
+          # Subjects only, and the same parse `rust-bump-version.yml` already
+          # ran: that subject line decided this version number, so reading it
+          # again here is one contract read twice, not two sources of truth.
+          # The release commit itself is dropped — it is the tag, not a change
+          # in it — which is the same commit that workflow skips.
+          git log --no-merges --reverse --format='%s' "${range}" \
+            | grep -v -E '^chore: release v' > subjects.txt || true
+
+          section() {
+            local heading="$1" pattern="$2" body
+            body=$(grep -E "${pattern}" subjects.txt \
+              | sed -E 's/^[a-z]+(\([^)]*\))?!?: */- /' || true)
+            if [ -n "${body}" ]; then
+              printf '### %s\n\n%s\n\n' "${heading}" "${body}" >> changelog.md
+            fi
+          }
+
+          : > changelog.md
+          section "Breaking changes" '^[a-z]+(\([^)]*\))?!:'
+          section "Features"         '^feat(\([^)]*\))?:'
+          section "Fixes"            '^fix(\([^)]*\))?:'
+          section "Performance"      '^perf(\([^)]*\))?:'
+          section "Other changes"    '^(refactor|revert|style|chore|docs|test|build|ci)(\([^)]*\))?:'
+
+          if [ ! -s changelog.md ]; then
+            printf 'No conventional-commit changes since `%s`.\n\n' "${previous:-the start of history}" \
+              >> changelog.md
+          fi
+
+          cat changelog.md
+
+      # Prepended, not appended. Renovate embeds this whole body in a bump pull
+      # request in every repository that pins the caller, and what a consumer is
+      # reading for is what the caller knows about itself — the tool's own
+      # changelog belongs beneath it.
+      - name: Assemble the release body
+        env:
+          EXTRA_NOTES: ${{ inputs.extra-notes }}
+        run: |
+          set -euo pipefail
+          : > notes.md
+          if [ -n "${EXTRA_NOTES}" ]; then
+            printf '%s\n\n' "${EXTRA_NOTES}" >> notes.md
+          fi
+          cat changelog.md >> notes.md
+          cat notes.md
+
+      - name: Checksum the binaries
+        env:
+          BINARY: ${{ inputs.binary }}
+        run: sha256sum "${BINARY}"-* > SHA256SUMS
+
+      # Creating and re-running are the same command as far as a maintainer is
+      # concerned, so both work. Without the second branch a manual re-run would
+      # be decoration: a run that died mid-upload leaves the release already
+      # created, and `gh release create` refuses to touch it.
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          BINARY: ${{ inputs.binary }}
+        run: |
+          set -euo pipefail
+          if gh release view "${TAG}" > /dev/null 2>&1; then
+            gh release upload "${TAG}" --clobber "${BINARY}"-* SHA256SUMS
+            gh release edit "${TAG}" --notes-file notes.md
+          else
+            gh release create "${TAG}" \
+              --title "${TAG}" \
+              --notes-file notes.md \
+              "${BINARY}"-* SHA256SUMS
+          fi
