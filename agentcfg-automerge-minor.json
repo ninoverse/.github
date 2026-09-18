@@ -1,0 +1,10 @@
+{
+  "description": "Auto-merge an agentcfg patch or minor bump once CI passes. A minor adds a fragment, an axis value or a rule and is additive, so nothing an agent was already doing becomes wrong, but it does mean rules arrive without anyone reading them — choose this where the repository trusts the central rules and would rather not gate on review. Majors still wait: the base preset holds every major behind the Dependency Dashboard. Extend this beside the base preset in a repository's renovate.json.",
+  "packageRules": [
+    {
+      "matchDepNames": ["ninoverse/agent-config-sync"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "automerge": true
+    }
+  ]
+}

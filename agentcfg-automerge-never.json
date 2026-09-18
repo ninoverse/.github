@@ -1,0 +1,9 @@
+{
+  "description": "Never auto-merge an agentcfg bump: every one waits for a human, whatever its version bump. Extend this beside the base preset in a repository's renovate.json. It is the same behavior a repository gets from the base preset alone, written down — worth a line in renovate.json where a reader would otherwise have to know that no auto-merge is the default.",
+  "packageRules": [
+    {
+      "matchDepNames": ["ninoverse/agent-config-sync"],
+      "automerge": false
+    }
+  ]
+}

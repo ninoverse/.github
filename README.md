@@ -387,6 +387,39 @@ collects post-upgrade changes from `git status`, so a fetched binary that is not
 ignored lands in the bump commit — three megabytes of it, in a pull request
 about prose.
 
+#### Auto-merging agentcfg
+
+A repository extending only the base preset auto-merges nothing, which is the
+right default for rules a person should read. Three presets relax that, chosen
+by a second line in `renovate.json`:
+
+| Preset | Auto-merges |
+|---|---|
+| `github>ninoverse/.github:agentcfg-automerge-never` | Nothing. The default, written down. |
+| `github>ninoverse/.github:agentcfg-automerge-patch` | Patch only |
+| `github>ninoverse/.github:agentcfg-automerge-minor` | Patch and minor |
+
+```json
+{
+  "extends": [
+    "github>ninoverse/.github",
+    "github>ninoverse/.github:agentcfg-automerge-patch"
+  ]
+}
+```
+
+Majors need nothing added, and no preset here can auto-merge one: the base
+preset holds every major behind the Dependency Dashboard. CI still gates every
+auto-merge, `agentcfg check` included, so a bump that regenerated badly is never
+merged unattended.
+
+This is why the version number has to mean something for prose, and it does.
+**Patch** is wording, examples or clarification — no rule changes meaning.
+**Minor** adds a fragment, an axis value or a rule; it is additive, so nothing
+an agent was already doing becomes wrong. **Major** reverses or removes a rule,
+renames a fragment, or changes the profile schema — something a repository was
+doing is now wrong, or its profile needs editing.
+
 Setup is a GitHub App installed on the organization, with `RENOVATE_APP_ID` and
 `RENOVATE_APP_PRIVATE_KEY` set at organization level. See
 [`CONTRIBUTING.md`](CONTRIBUTING.md#one-time-setup).
