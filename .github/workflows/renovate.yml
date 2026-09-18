@@ -31,6 +31,9 @@ on:
         default: info
   # Re-run when the shared config changes, so a mistake surfaces immediately
   # rather than next Monday — and a mistake here now affects every repository.
+  # It validates rather than delivers: the preset's `schedule` is evaluated when
+  # a branch would be created, so a run outside the Monday window extracts
+  # dependencies and opens no pull request.
   push:
     branches: [main]
     paths:
