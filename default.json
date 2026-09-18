@@ -37,6 +37,12 @@
       "matchManagers": ["github-actions"],
       "matchDepNames": ["dtolnay/rust-toolchain"],
       "enabled": false
+    },
+    {
+      "description": "agentcfg composes this repository's agent rule files, so its bump rewrites prose an agent obeys rather than code it calls. Folded into the weekly non-major group it would be one line of Cargo.toml churn in a pull request nobody reads closely, which is the exact failure this pin exists to prevent — so it gets a group of its own. Majors need nothing here: the rule above already holds every major behind dependencyDashboardApproval. Matches nothing in a repository with no .agentprofile.yml.",
+      "matchDepNames": ["ninoverse/agent-config-sync"],
+      "groupName": "agentcfg",
+      "groupSlug": "agentcfg"
     }
   ],
   "customManagers": [
@@ -47,6 +53,15 @@
       "matchStrings": [
         "# renovate: datasource=(?<datasource>[a-z-]+?) depName=(?<depName>[^\\s]+?)\\s+renovate-version: (?<currentValue>[^\\s]+)"
       ],
+      "versioningTemplate": "semver"
+    },
+    {
+      "description": "The agentcfg release a repository's composed agent rules were generated from, pinned as config_version in .agentprofile.yml. No built-in manager reads that file, so it is picked up by annotation-free regex the same way the pinned Renovate version above is. The whole pin including its leading v is captured, because that v is part of the tag the download URL is built from and the profile schema requires it; capturing it keeps Renovate's replacement byte-identical in shape to what it replaced.",
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.agentprofile\\.yml$/"],
+      "matchStrings": ["config_version:\\s*(?<currentValue>v\\d+\\.\\d+\\.\\d+)"],
+      "depNameTemplate": "ninoverse/agent-config-sync",
+      "datasourceTemplate": "github-releases",
       "versioningTemplate": "semver"
     }
   ],
