@@ -104,3 +104,30 @@ jobs:
           # configured anywhere in this repository.
           RENOVATE_PLATFORM_COMMIT: "enabled"
           LOG_LEVEL: ${{ inputs.logLevel || 'info' }}
+          # Post-upgrade commands are blocked outright unless they match one
+          # of these patterns. The option is global-only, which is the whole
+          # point: a repository cannot add to it from its own renovate.json, so
+          # extending the agentcfg preset can never make this run execute
+          # something the organization has not already allowed here.
+          #
+          # These three regenerate a repository's composed agent rule files
+          # after its .agentprofile.yml pin is bumped, so the new pin and the
+          # files it produces land in one commit — see postUpgradeTasks in
+          # default.json. They are matched against the command *after* its
+          # Handlebars template is compiled, and the match is unanchored, so
+          # each pattern anchors itself and pins the tag shape rather than
+          # accepting any URL under the releases path.
+          #
+          # Renovate reads an array-typed variable as JSON5 before falling back
+          # to splitting on commas, so the doubled backslashes below are JSON
+          # escapes and reach the regex engine as single ones.
+          #
+          # A command that misses the allowlist records an artifact error on the
+          # pull request rather than passing quietly, which is the failure worth
+          # having.
+          RENOVATE_ALLOWED_COMMANDS: >-
+            [
+            "^curl --fail --silent --show-error --location --create-dirs --output \\.agentcfg/agentcfg https://github\\.com/ninoverse/agent-config-sync/releases/download/v[0-9]+\\.[0-9]+\\.[0-9]+/agentcfg-x86_64-unknown-linux-musl$",
+            "^chmod \\+x \\.agentcfg/agentcfg$",
+            "^\\.agentcfg/agentcfg sync$"
+            ]
