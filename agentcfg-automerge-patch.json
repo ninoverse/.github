@@ -1,0 +1,10 @@
+{
+  "description": "Auto-merge an agentcfg patch bump once CI passes, and nothing else. A patch changes wording, examples or clarification and reverses no rule, so nothing an agent was already doing becomes wrong. Minor and major still wait for a human — a minor adds a rule worth reading, and the base preset holds every major behind the Dependency Dashboard. Extend this beside the base preset in a repository's renovate.json.",
+  "packageRules": [
+    {
+      "matchDepNames": ["ninoverse/agent-config-sync"],
+      "matchUpdateTypes": ["patch"],
+      "automerge": true
+    }
+  ]
+}
