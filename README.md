@@ -256,11 +256,23 @@ concurrency:
 
 jobs:
   release:
+    # Required, and it goes on the calling job. A called workflow can only
+    # downgrade the permissions it is handed, never raise them, so the
+    # `contents: write` the release job needs to publish is capped by whatever
+    # the caller grants. Leave this out and the run builds every target and
+    # then fails the publish with a 403.
+    permissions:
+      contents: write
     uses: ninoverse/.github/.github/workflows/rust-release.yml@v1
     with:
       binary: my-tool
       targets: x86_64-unknown-linux-musl,aarch64-unknown-linux-musl,aarch64-apple-darwin
 ```
+
+This is the one workflow here that needs a write permission, which is why it is
+the only caller example that carries a `permissions:` block. A workflow-level
+`permissions: contents: read` in the caller is fine, and does not have to be
+removed — a job-level block replaces it rather than being capped by it.
 
 A repository with something to say about its own release computes it in a job
 of its own and passes it through:
@@ -275,6 +287,8 @@ jobs:
 
   release:
     needs: notes
+    permissions:
+      contents: write
     uses: ninoverse/.github/.github/workflows/rust-release.yml@v1
     with:
       binary: my-tool
@@ -337,6 +351,12 @@ Two consequences worth knowing before changing `default.json`:
 - **One failure point.** A bad preset affects every repository at once, which is
   why the workflow re-runs on a push to `default.json` instead of waiting for
   Monday.
+- **That re-run validates, it does not deliver.** `schedule:` is evaluated when
+  a branch would be created, not when the run fires, so a push-triggered run
+  outside the Monday window extracts dependencies and opens nothing. A config
+  mistake surfaces immediately; a pull request still waits. To pull one update
+  forward, tick its checkbox under *Awaiting Schedule* on that repository's
+  Dependency Dashboard and re-run the workflow.
 
 ### agentcfg
 

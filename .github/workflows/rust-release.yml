@@ -15,10 +15,18 @@ name: Rust Release
 #
 #   jobs:
 #     release:
+#       permissions:
+#         contents: write
 #       uses: ninoverse/.github/.github/workflows/rust-release.yml@v1
 #       with:
 #         binary: agentcfg
 #         targets: x86_64-unknown-linux-musl,aarch64-unknown-linux-musl,aarch64-apple-darwin
+#
+# That `permissions` block is required and belongs on the calling job. A called
+# workflow can only downgrade the permissions it is handed, never raise them, so
+# the `contents: write` the release job below declares is capped by whatever the
+# caller grants. Without it the run builds every target and then fails the
+# publish with a 403.
 #
 # Assets are named `<binary>-<target>` and nothing else — the tag is already in
 # the download URL. Downstream consumers build that URL by hand, so renaming an
