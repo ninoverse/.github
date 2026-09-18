@@ -338,6 +338,28 @@ Two consequences worth knowing before changing `default.json`:
   why the workflow re-runs on a push to `default.json` instead of waiting for
   Monday.
 
+### agentcfg
+
+A repository whose agent rule files are composed by
+[`agent-config-sync`](https://github.com/ninoverse/agent-config-sync) pins the
+release it generated them from, as `config_version` in `.agentprofile.yml`. No
+built-in manager reads that file, so a custom manager picks the pin up by regex
+— the same annotation-free technique that keeps the pinned Renovate version
+above current.
+
+It gets a group of its own rather than joining the weekly non-major pull
+request. A bump there rewrites the prose an agent obeys, not code it calls,
+and folded in among cargo updates it would be one line of churn in a pull
+request nobody reads closely — the exact failure the pin exists to prevent.
+Majors need nothing extra: the shared rule already holds every major behind
+the Dependency Dashboard.
+
+The whole pin is matched including its leading `v`, because that `v` is part of
+the tag the release download URL is built from.
+
+Matches nothing in a repository with no `.agentprofile.yml`, which today is
+every repository but one.
+
 Setup is a GitHub App installed on the organization, with `RENOVATE_APP_ID` and
 `RENOVATE_APP_PRIVATE_KEY` set at organization level. See
 [`CONTRIBUTING.md`](CONTRIBUTING.md#one-time-setup).
