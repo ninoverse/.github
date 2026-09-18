@@ -42,7 +42,15 @@
       "description": "agentcfg composes this repository's agent rule files, so its bump rewrites prose an agent obeys rather than code it calls. Folded into the weekly non-major group it would be one line of Cargo.toml churn in a pull request nobody reads closely, which is the exact failure this pin exists to prevent — so it gets a group of its own. Majors need nothing here: the rule above already holds every major behind dependencyDashboardApproval. Matches nothing in a repository with no .agentprofile.yml.",
       "matchDepNames": ["ninoverse/agent-config-sync"],
       "groupName": "agentcfg",
-      "groupSlug": "agentcfg"
+      "groupSlug": "agentcfg",
+      "postUpgradeTasks": {
+        "commands": [
+          "curl --fail --silent --show-error --location --create-dirs --output .agentcfg/agentcfg https://github.com/ninoverse/agent-config-sync/releases/download/{{{newValue}}}/agentcfg-x86_64-unknown-linux-musl",
+          "chmod +x .agentcfg/agentcfg",
+          ".agentcfg/agentcfg sync"
+        ],
+        "executionMode": "branch"
+      }
     }
   ],
   "customManagers": [

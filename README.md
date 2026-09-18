@@ -360,6 +360,33 @@ the tag the release download URL is built from.
 Matches nothing in a repository with no `.agentprofile.yml`, which today is
 every repository but one.
 
+Bumping the pin alone would leave `main` inconsistent: the profile would name a
+release the composed files were not generated from, and the repository's own
+`agentcfg check` gate would fail on the very pull request the bot opened. So a
+`postUpgradeTasks` entry regenerates them *before the commit is made* —
+`executionMode: branch`, so it runs once per branch rather than once per
+dependency. The new pin and the files it produces land in one commit.
+
+The commands get no shell, so they are three bare invocations rather than a
+pipeline: fetch the pinned binary, mark it executable, run `sync`.
+`--create-dirs` is what keeps that at three commands instead of four. The tag
+comes from `{{{newValue}}}`, triple-braced so it is not HTML-escaped — and it
+resolves correctly here only because the rule above gives agentcfg a group of
+its own, since in branch mode the template reads the branch's *first* upgrade.
+
+`allowedCommands` in
+[`renovate.yml`](.github/workflows/renovate.yml) is what permits them, and it is
+a **global-only** option: a repository cannot add to it from its own
+`renovate.json`, so extending this preset can never make the central run execute
+something the organization has not already allowed. Each pattern is anchored by
+hand, because Renovate tests them unanchored against the command *after* its
+template is compiled.
+
+**`.agentcfg/` must be gitignored in every repository that opts in.** Renovate
+collects post-upgrade changes from `git status`, so a fetched binary that is not
+ignored lands in the bump commit — three megabytes of it, in a pull request
+about prose.
+
 Setup is a GitHub App installed on the organization, with `RENOVATE_APP_ID` and
 `RENOVATE_APP_PRIVATE_KEY` set at organization level. See
 [`CONTRIBUTING.md`](CONTRIBUTING.md#one-time-setup).
