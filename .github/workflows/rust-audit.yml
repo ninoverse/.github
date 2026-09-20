@@ -10,7 +10,7 @@ name: Rust Audit
 #
 #   jobs:
 #     audit:
-#       uses: ninoverse/.github/.github/workflows/rust-audit.yml@v1
+#       uses: ninoverse/.github/.github/workflows/rust-audit.yml@v1.2.3
 #
 # Contract: the calling repository has a justfile exposing `audit`.
 

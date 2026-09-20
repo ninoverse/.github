@@ -10,7 +10,7 @@ name: Go Audit
 #
 #   jobs:
 #     audit:
-#       uses: ninoverse/.github/.github/workflows/go-audit.yml@v1
+#       uses: ninoverse/.github/.github/workflows/go-audit.yml@v1.2.3
 #
 # Contract: the calling repository has a Makefile exposing `vuln` and
 # `tools-vuln`.
