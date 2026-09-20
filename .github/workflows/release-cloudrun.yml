@@ -7,7 +7,7 @@ name: Cloud Run Release
 #
 #   jobs:
 #     deploy:
-#       uses: ninoverse/.github/.github/workflows/release-cloudrun.yml@v1
+#       uses: ninoverse/.github/.github/workflows/release-cloudrun.yml@v1.2.3
 #       with:
 #         service: my-service
 #         project: ${{ vars.GCP_PROJECT }}
@@ -18,7 +18,8 @@ name: Cloud Run Release
 # The caller supplies the trigger, normally a push of the `v*` tag that
 # <ecosystem>-bump-version.yml creates.
 #
-# Pin the tag, not @main.
+# Pin a released version, not @main and not a short @v1: @main lands in every
+# repository at once with no pull request, and @v1 never moves at all.
 
 on:
   workflow_call:

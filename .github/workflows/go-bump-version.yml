@@ -6,7 +6,7 @@ name: Go Bump Version
 #
 #   jobs:
 #     bump:
-#       uses: ninoverse/.github/.github/workflows/go-bump-version.yml@v1
+#       uses: ninoverse/.github/.github/workflows/go-bump-version.yml@v1.2.3
 #       with:
 #         app-id: ${{ vars.RELEASE_APP_ID }}
 #       secrets:
@@ -24,7 +24,8 @@ name: Go Bump Version
 # tag pushed with GITHUB_TOKEN deliberately does not trigger other workflows, so
 # the release workflow watching for that tag would never fire.
 #
-# Pin the tag, not @main.
+# Pin a released version, not @main and not a short @v1: @main lands in every
+# repository at once with no pull request, and @v1 never moves at all.
 
 on:
   workflow_call:

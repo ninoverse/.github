@@ -73,7 +73,7 @@ concurrency:
 
 jobs:
   ci:
-    uses: ninoverse/.github/.github/workflows/rust-ci.yml@v1
+    uses: ninoverse/.github/.github/workflows/rust-ci.yml@v1.2.3
     with:
       msrv: "1.85" # must match [workspace.package].rust-version
 ```
@@ -95,7 +95,7 @@ on:
 
 jobs:
   audit:
-    uses: ninoverse/.github/.github/workflows/rust-audit.yml@v1
+    uses: ninoverse/.github/.github/workflows/rust-audit.yml@v1.2.3
 ```
 
 Repositories with no `deny.toml` pass `deny: false`; `coverage: false` skips the
@@ -117,7 +117,7 @@ concurrency:
 
 jobs:
   ci:
-    uses: ninoverse/.github/.github/workflows/go-ci.yml@v1
+    uses: ninoverse/.github/.github/workflows/go-ci.yml@v1.2.3
     with:
       go-version: "1.25" # must match the `go` directive in go.mod
 ```
@@ -137,7 +137,7 @@ on:
 
 jobs:
   audit:
-    uses: ninoverse/.github/.github/workflows/go-audit.yml@v1
+    uses: ninoverse/.github/.github/workflows/go-audit.yml@v1.2.3
 ```
 
 Repositories with no license policy pass `licenses: false`; `coverage: false`
@@ -177,8 +177,13 @@ These workflows are a dependency of every repository that calls them, so they
 carry version numbers like any other dependency. Callers pin a full one:
 
 ```yaml
-uses: ninoverse/.github/.github/workflows/rust-ci.yml@v1.0.0
+uses: ninoverse/.github/.github/workflows/rust-ci.yml@v1.2.3
 ```
+
+`v1.2.3` is a placeholder, here and in every example below and in each workflow
+file's own header. Renovate rewrites `jobs.<id>.uses`; it does not rewrite prose
+or comments, so a real version written into an example would go stale and stay
+stale. A caller pins a version that exists.
 
 [`bump-version.yml`](.github/workflows/bump-version.yml) cuts the tags on every
 push to `main`, from the commit subject, by the same conventional-commit rules
@@ -283,7 +288,7 @@ on:
 
 jobs:
   bump:
-    uses: ninoverse/.github/.github/workflows/rust-bump-version.yml@v1
+    uses: ninoverse/.github/.github/workflows/rust-bump-version.yml@v1.2.3
     with:
       app-id: ${{ vars.RELEASE_APP_ID }}
     secrets:
@@ -313,7 +318,7 @@ jobs:
     # then fails the publish with a 403.
     permissions:
       contents: write
-    uses: ninoverse/.github/.github/workflows/rust-release.yml@v1
+    uses: ninoverse/.github/.github/workflows/rust-release.yml@v1.2.3
     with:
       binary: my-tool
       targets: x86_64-unknown-linux-musl,aarch64-unknown-linux-musl,aarch64-apple-darwin
@@ -339,7 +344,7 @@ jobs:
     needs: notes
     permissions:
       contents: write
-    uses: ninoverse/.github/.github/workflows/rust-release.yml@v1
+    uses: ninoverse/.github/.github/workflows/rust-release.yml@v1.2.3
     with:
       binary: my-tool
       targets: x86_64-unknown-linux-musl
@@ -355,7 +360,7 @@ on:
 
 jobs:
   deploy:
-    uses: ninoverse/.github/.github/workflows/release-cloudrun.yml@v1
+    uses: ninoverse/.github/.github/workflows/release-cloudrun.yml@v1.2.3
     with:
       service: my-service
       project: ${{ vars.GCP_PROJECT }}
