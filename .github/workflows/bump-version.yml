@@ -1,0 +1,43 @@
+name: Bump Version and Tag
+
+# The workflows in this repository are a dependency of every repository that
+# calls them, so they carry version numbers like any other dependency. This file
+# is what cuts them.
+#
+# It calls go-bump-version.yml, and the name is the only Go thing about it:
+# nothing inside is ecosystem-specific. It reads the commit subject, derives the
+# next version from the tags that already exist and pushes one, changing nothing
+# in the tree — which is exactly right here, because this repository has no
+# version field either. Renaming it to something neutral would delete a filename
+# that repositories outside this rollout still call, so the name waits for a
+# deliberate major.
+#
+# Called by relative path rather than by tag. Every other caller pins a version
+# on purpose; this one cannot, because the tag it would pin is the tag this job
+# exists to cut.
+#
+# Requires an organization-level RELEASE_APP_ID variable and
+# RELEASE_APP_PRIVATE_KEY secret. Without them the run fails immediately with a
+# named error rather than obscurely inside the token action.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Two merges in quick succession would otherwise compute the next tag from the
+# same starting point and collide. Queue rather than cancel: cancelling a run
+# mid-push is the one way to get a tag with nothing behind it.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    uses: ./.github/workflows/go-bump-version.yml
+    with:
+      app-id: ${{ vars.RELEASE_APP_ID }}
+    secrets:
+      app-private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}

@@ -171,8 +171,58 @@ already covered. What that job adds is the two things that are not:
   from two sources, so drift between them surfaces here rather than going
   unnoticed.
 
-**Pin the tag, not `@main`.** A change to `@main` lands in every repository at
+### Versioning
+
+These workflows are a dependency of every repository that calls them, so they
+carry version numbers like any other dependency. Callers pin a full one:
+
+```yaml
+uses: ninoverse/.github/.github/workflows/rust-ci.yml@v1.0.0
+```
+
+[`bump-version.yml`](.github/workflows/bump-version.yml) cuts the tags on every
+push to `main`, from the commit subject, by the same conventional-commit rules
+every other repository here releases by. Renovate opens the bump in each caller,
+in a group of its own rather than the weekly actions PR — a bump here changes
+what the gates *are*, not which version of `actions/checkout` runs them.
+
+**Pin a full version, not a short one.** `@v1` looks like a pin and behaves like
+neither thing it resembles. Renovate's `github-actions` versioning prefers the
+shortest tag that works, so given `@v1` and a release of `v1.5.3` it resolves
+the upgrade and writes `v1` back unchanged; a short ref moves only when a `v2`
+appears. It is not a floating tag and not a maintained pin — it is a ref that
+quietly stops receiving anything, which is how `v1` here came to sit four
+commits behind `main` with no pull request anywhere to show for it.
+
+**Pin a version, not `@main`.** A change to `@main` lands in every repository at
 once, with no pull request in any of them.
+
+`v1` still exists and still points at `f612c6f`. It stays there: a landing spot
+for repositories not yet moved onto a version, not a major that tracks anything.
+A repository still on `@v1` is receiving nothing.
+
+#### What counts as breaking
+
+A version number is only worth reading if it means something, and the
+non-obvious half of the answer is that a called workflow's API is wider than its
+`inputs:`.
+
+**Major** — the caller has to change, or its branch protection does:
+
+- Removing or renaming an input or secret, or making an optional input required.
+- Changing an input's default.
+- Renaming a workflow file.
+- Renaming a job. A job's `name:` becomes the status check name in every caller,
+  and branch protection names its required checks as strings. `Gate 1 — fmt` is
+  part of the interface, not a label.
+- Needing a permission the caller did not have to grant before. A called
+  workflow can only narrow the permissions it is handed, never raise them, so a
+  new `contents: write` requirement is a change every caller has to make — the
+  `permissions` block on the `rust-release.yml` caller below is one.
+
+**Minor** — a new optional input, a new job, a new output.
+
+**Patch** — everything else, comments and documentation included.
 
 ### Adding another ecosystem
 
