@@ -39,6 +39,12 @@
       "enabled": false
     },
     {
+      "description": "The reusable workflows in ninoverse/.github are the gates themselves, so a bump here changes what CI enforces rather than which version of actions/checkout runs it. Folded into the weekly github-actions group it would be one line in a pull request skimmed for its actions/* churn, which is exactly how a changed gate gets merged unread \u2014 so it gets a group of its own, on the same reasoning as agentcfg below. Majors need nothing here: the rule above already holds every major behind dependencyDashboardApproval. The subpath is not part of the name Renovate matches on, so this one rule covers every workflow called from the repository. Matches nothing in a repository that calls none of them.",
+      "matchDepNames": ["ninoverse/.github"],
+      "groupName": "org workflows",
+      "groupSlug": "org-workflows"
+    },
+    {
       "description": "agentcfg composes this repository's agent rule files, so its bump rewrites prose an agent obeys rather than code it calls. Folded into the weekly non-major group it would be one line of Cargo.toml churn in a pull request nobody reads closely, which is the exact failure this pin exists to prevent — so it gets a group of its own. Majors need nothing here: the rule above already holds every major behind dependencyDashboardApproval. Matches nothing in a repository with no .agentprofile.yml.",
       "matchDepNames": ["ninoverse/agent-config-sync"],
       "groupName": "agentcfg",
