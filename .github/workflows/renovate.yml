@@ -17,7 +17,13 @@ name: Renovate
 
 on:
   schedule:
-    - cron: "0 4 * * 1" # Mondays 04:00 UTC, inside the preset's "before 6am on monday" window
+    # 04:00 UTC is when this asks to run, not when it runs. GitHub delays
+    # scheduled workflows under load, and the only run that has ever fired this
+    # way started at 09:26 — five and a half hours late. The preset's window is
+    # the whole of Monday for that reason: Renovate evaluates its own schedule
+    # when it would create a branch, so a narrow window plus a delayed start
+    # means it extracts dependencies and opens nothing.
+    - cron: "0 4 * * 1"
   workflow_dispatch:
     inputs:
       dryRun:

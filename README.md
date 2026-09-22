@@ -399,19 +399,28 @@ manager-based rather than language-based — it detects `Cargo.toml`, `go.mod`,
 — so one preset serves every ecosystem. Rules that name a Rust dependency simply
 never match elsewhere.
 
-Two consequences worth knowing before changing `default.json`:
+Four consequences worth knowing before changing `default.json`:
 
 - **One cron is a cadence floor.** Per-repository `schedule:` still narrows, but
   no repository updates more often than the central run fires.
 - **One failure point.** A bad preset affects every repository at once, which is
   why the workflow re-runs on a push to `default.json` instead of waiting for
   Monday.
-- **That re-run validates, it does not deliver.** `schedule:` is evaluated when
-  a branch would be created, not when the run fires, so a push-triggered run
-  outside the Monday window extracts dependencies and opens nothing. A config
-  mistake surfaces immediately; a pull request still waits. To pull one update
-  forward, tick its checkbox under *Awaiting Schedule* on that repository's
-  Dependency Dashboard and re-run the workflow.
+- **The window is the whole of Monday, and has to be.** `schedule:` is evaluated
+  when a branch would be created, not when the run fires. A GitHub cron is a
+  request, not a promise — scheduled workflows are delayed under load, and the
+  one run that has ever fired that way started at 09:26 against a `0 4 * * 1`
+  cron. Against the four-hour window this preset used to carry, that run could
+  create nothing at all. Renovate's own documentation warns off the shape:
+  *"Avoid schedules like 'Run Renovate for an hour each Sunday' as you will run
+  into problems."* Narrowing the window again re-creates the bug.
+- **A re-run on a Monday delivers; on any other day it only validates.** Outside
+  the window a push-triggered run extracts dependencies and opens nothing, so a
+  config mistake still surfaces immediately while pull requests wait. On a
+  Monday there is no such separation — a push to `default.json` opens whatever
+  is due, org-wide. To pull one update forward on another day, tick its checkbox
+  under *Awaiting Schedule* on that repository's Dependency Dashboard and re-run
+  the workflow.
 
 ### agentcfg
 

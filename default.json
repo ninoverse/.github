@@ -6,7 +6,7 @@
     ":semanticCommits"
   ],
   "timezone": "Etc/UTC",
-  "schedule": ["before 6am on monday"],
+  "schedule": ["* * * * 1"],
   "labels": ["dependencies"],
   "semanticCommitType": "chore",
   "semanticCommitScope": "deps",
@@ -39,7 +39,7 @@
       "enabled": false
     },
     {
-      "description": "The reusable workflows in ninoverse/.github are the gates themselves, so a bump here changes what CI enforces rather than which version of actions/checkout runs it. Folded into the weekly github-actions group it would be one line in a pull request skimmed for its actions/* churn, which is exactly how a changed gate gets merged unread \u2014 so it gets a group of its own, on the same reasoning as agentcfg below. Majors need nothing here: the rule above already holds every major behind dependencyDashboardApproval. The subpath is not part of the name Renovate matches on, so this one rule covers every workflow called from the repository. Matches nothing in a repository that calls none of them.",
+      "description": "The reusable workflows in ninoverse/.github are the gates themselves, so a bump here changes what CI enforces rather than which version of actions/checkout runs it. Folded into the weekly github-actions group it would be one line in a pull request skimmed for its actions/* churn, which is exactly how a changed gate gets merged unread — so it gets a group of its own, on the same reasoning as agentcfg below. Majors need nothing here: the rule above already holds every major behind dependencyDashboardApproval. The subpath is not part of the name Renovate matches on, so this one rule covers every workflow called from the repository. Matches nothing in a repository that calls none of them.",
       "matchDepNames": ["ninoverse/.github"],
       "groupName": "org workflows",
       "groupSlug": "org-workflows"
@@ -80,8 +80,9 @@
     }
   ],
   "lockFileMaintenance": {
+    "description": "Monthly, expressed as a day range rather than a day of the week, because the central run only fires on Mondays: days 1-7 intersected with Mondays is the first Monday of the month. The day-of-week field is deliberately left alone. Cron ORs the two day fields when both are restricted rather than ANDing them, so `* * 1-7 * 1` would match every Monday as well as days 1-7 — weekly, not monthly. Leaving it `*` removes the ambiguity instead of betting on how it resolves.",
     "enabled": true,
-    "schedule": ["before 6am on the first day of the month"],
+    "schedule": ["* * 1-7 * *"],
     "commitMessageAction": "refresh"
   },
   "vulnerabilityAlerts": {
