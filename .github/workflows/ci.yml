@@ -1,0 +1,38 @@
+name: CI
+
+# This repository's own gate. Everything else here is a reusable workflow that
+# other repositories call, so a mistake in one of these files reaches every
+# repository in the organization — and every merge cuts a release, which means
+# a broken workflow gets a version number before anyone runs it.
+#
+# actionlint rather than a YAML linter: it knows the workflow schema, so it
+# catches an unknown key, a bad `needs:` reference or an expression that cannot
+# type-check, none of which are YAML errors. Run through the published image
+# rather than the bare binary because the image bundles shellcheck, and the
+# `run:` blocks in the bump and release workflows are where the real logic is.
+#
+# The image tag is pinned and Renovate keeps it current: the github-actions
+# manager reads `docker://` references the same way it reads any other `uses:`.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  actionlint:
+    name: Gate 1 — actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -color

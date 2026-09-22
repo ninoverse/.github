@@ -221,6 +221,10 @@ jobs:
           section "Other changes"    '^(refactor|revert|style|chore|docs|test|build|ci)(\([^)]*\))?:'
 
           if [ ! -s changelog.md ]; then
+            # The backticks are markdown for the release body, not command
+            # substitution, so the single quotes are right and expansion is not
+            # wanted. shellcheck sees only the backticks.
+            # shellcheck disable=SC2016
             printf 'No conventional-commit changes since `%s`.\n\n' "${previous:-the start of history}" \
               >> changelog.md
           fi
