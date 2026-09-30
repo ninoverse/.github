@@ -37,6 +37,7 @@ job definitions in one place.
 | [`rust-audit.yml`](.github/workflows/rust-audit.yml) | `cargo audit` · `cargo deny check advisories` |
 | [`go-ci.yml`](.github/workflows/go-ci.yml) | `fmt` · `vet`+`lint` · `test -race` · `licenses`+`vuln` · go.mod floor · coverage artifact |
 | [`go-audit.yml`](.github/workflows/go-audit.yml) | `govulncheck` |
+| [`actionlint.yml`](.github/workflows/actionlint.yml) | `actionlint` over the workflow files, with shellcheck on their `run:` blocks |
 
 **The contract is the runner recipe, never the tool behind it.** CI calls the
 recipe so each command — and each tool version pin — keeps exactly one
@@ -170,6 +171,26 @@ already covered. What that job adds is the two things that are not:
   checks the caller's declared floor against the file. They are the same number
   from two sources, so drift between them surfaces here rather than going
   unnoticed.
+
+### Workflow files
+
+Every repository, whatever its ecosystem, adds one job to its CI caller:
+
+```yaml
+jobs:
+  workflows:
+    uses: ninoverse/.github/.github/workflows/actionlint.yml@v1.2.3
+```
+
+Its check reads `workflows / actionlint`. It is the one gate with no runner
+recipe behind it: workflow files are the same kind of file everywhere, so the
+actionlint image is pinned in `actionlint.yml`, once. This repository's own CI
+calls the same file by relative path. To run it locally, use the tag pinned
+there:
+
+```bash
+docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:<tag> -color
+```
 
 ### Versioning
 
