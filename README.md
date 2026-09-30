@@ -38,6 +38,7 @@ job definitions in one place.
 | [`go-ci.yml`](.github/workflows/go-ci.yml) | `fmt` · `vet`+`lint` · `test -race` · `licenses`+`vuln` · go.mod floor · coverage artifact |
 | [`go-audit.yml`](.github/workflows/go-audit.yml) | `govulncheck` |
 | [`node-ci.yml`](.github/workflows/node-ci.yml) | `lint` · `typecheck` · `test` · `build` · `engines.node` floor |
+| [`node-audit.yml`](.github/workflows/node-audit.yml) | `pnpm audit` |
 | [`actionlint.yml`](.github/workflows/actionlint.yml) | `actionlint` over the workflow files, with shellcheck on their `run:` blocks |
 
 **The contract is the runner recipe, never the tool behind it.** CI calls the
@@ -219,6 +220,39 @@ The job runs in one of two modes:
   breaking change for the library. Each entry point has to load with only the
   package's own dependencies installed, so one that needs an optional peer, such
   as React, stays out of the list.
+
+```yaml
+name: Audit
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  push:
+    branches: [main]
+    paths: ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"]
+  pull_request:
+    paths: ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"]
+  workflow_dispatch:
+
+jobs:
+  audit:
+    uses: ninoverse/.github/.github/workflows/node-audit.yml@v1.2.3
+```
+
+`node-audit.yml` is the one workflow that runs the tool rather than a recipe:
+pnpm reserves `audit` for its own advisory check, so `pnpm audit` never reaches a
+script of that name. It reads `pnpm-lock.yaml` and installs nothing. The policy
+goes in `pnpm-workspace.yaml`, the one file pnpm reads all of it from:
+
+```yaml
+auditLevel: high # the lowest severity that fails the job; the default is low
+auditConfig:
+  ignoreGhsas:
+    - GHSA-xxxx-xxxx-xxxx # an accepted advisory, with the reason beside it
+```
+
+pnpm also takes `auditConfig` from `package.json`'s `pnpm` field, but ignores an
+`auditLevel` set there.
 
 ### Workflow files
 
