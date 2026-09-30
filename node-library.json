@@ -1,0 +1,17 @@
+{
+  "description": "For a package published to npm: a repository whose .agentprofile.yml says deployment: library extends this beside the base preset in its renovate.json. The base preset's bump strategy suits an application, whose ranges nobody inherits. A library's ranges are its consumers' ranges, so bumping one moves everyone who installs the library, and narrowing a peer range breaks every app still on the older major.",
+  "packageRules": [
+    {
+      "description": "Runtime dependencies update the lockfile only, so the library is built and tested on the newest release its range allows while the range it publishes stays where it is. A release outside the range still rewrites it, and waits for approval as a major. A change that starts needing a newer version raises the minimum by hand, in that change.",
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["dependencies"],
+      "rangeStrategy": "update-lockfile"
+    },
+    {
+      "description": "Peer ranges widen rather than move, so a new React major turns ^19.0.0 into ^19.0.0 || ^20.0.0 and apps on the older major still resolve the library. Development dependencies keep the base preset's bump: no consumer installs them.",
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["peerDependencies"],
+      "rangeStrategy": "widen"
+    }
+  ]
+}

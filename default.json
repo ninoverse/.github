@@ -39,6 +39,18 @@
       "enabled": false
     },
     {
+      "description": "Never touch the go directive in go.mod either. Like the MSRV, it is the module's floor: go-ci.yml's floor job installs the caller's go-version input and fails by name when the directive has moved past it, and moving to a new Go release is meant to be a deliberate edit to go.mod. The toolchain directive stays managed, since it pins development rather than promising anything. Matches nothing in a repository with no go.mod.",
+      "matchManagers": ["gomod"],
+      "matchDepTypes": ["golang"],
+      "enabled": false
+    },
+    {
+      "description": "Never touch engines in package.json. It is the floor a package declares to whoever installs it, so raising it is a decision made in the change that needs it, and for a published package a breaking one. .nvmrc and packageManager stay managed: they pin development rather than promising anything, and packageManager is also what tells Renovate which pnpm regenerates the lockfile. Matches nothing in a repository with no package.json.",
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["engines"],
+      "enabled": false
+    },
+    {
       "description": "The reusable workflows in ninoverse/.github are the gates themselves, so a bump here changes what CI enforces rather than which version of actions/checkout runs it. Folded into the weekly github-actions group it would be one line in a pull request skimmed for its actions/* churn, which is exactly how a changed gate gets merged unread — so it gets a group of its own, on the same reasoning as agentcfg below. Majors need nothing here: the rule above already holds every major behind dependencyDashboardApproval. The subpath is not part of the name Renovate matches on, so this one rule covers every workflow called from the repository. Matches nothing in a repository that calls none of them.",
       "matchDepNames": ["ninoverse/.github"],
       "groupName": "org workflows",
