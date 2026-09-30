@@ -37,6 +37,7 @@ job definitions in one place.
 | [`rust-audit.yml`](.github/workflows/rust-audit.yml) | `cargo audit` · `cargo deny check advisories` |
 | [`go-ci.yml`](.github/workflows/go-ci.yml) | `fmt` · `vet`+`lint` · `test -race` · `licenses`+`vuln` · go.mod floor · coverage artifact |
 | [`go-audit.yml`](.github/workflows/go-audit.yml) | `govulncheck` |
+| [`node-ci.yml`](.github/workflows/node-ci.yml) | `lint` · `typecheck` · `test` · `build` · `engines.node` floor |
 | [`actionlint.yml`](.github/workflows/actionlint.yml) | `actionlint` over the workflow files, with shellcheck on their `run:` blocks |
 
 **The contract is the runner recipe, never the tool behind it.** CI calls the
@@ -49,6 +50,7 @@ repositories copy it.
 |---|---|---|
 | Rust | `justfile` | `fmt-check` `lint` `test` `deny` `audit` |
 | Go | `Makefile` | `fmt-check` `vet` `lint` `test-race` `vuln` `licenses` `cover`, plus `tools-lint` `tools-test` `tools-vuln` `tools-licenses` |
+| Node | `package.json` scripts | `lint` `typecheck` `test` `build` |
 
 Go needs the `tools-*` split because its linters arrive by `go install` rather
 than as prebuilt binaries: each gate installs only what it uses, and the pinned
@@ -171,6 +173,52 @@ already covered. What that job adds is the two things that are not:
   checks the caller's declared floor against the file. They are the same number
   from two sources, so drift between them surfaces here rather than going
   unnoticed.
+
+### Node
+
+`.github/workflows/ci.yml` in the calling repository:
+
+```yaml
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    uses: ninoverse/.github/.github/workflows/node-ci.yml@v1.2.3
+    with:
+      node-floor: "20.0.0" # the lower bound of engines.node, as an exact version
+      imports: "@scope/package/sub" # a library only; see below
+      playwright: chromium # only if the tests drive a browser
+```
+
+pnpm comes from `packageManager` and Node from `.nvmrc`, so a caller writes no
+version but its floor. The `Node <floor>` job is the counterpart of the Rust and
+Go floor jobs, for `engines.node`: every other job runs on `.nvmrc`, so it is the
+only one that tests the oldest Node the package claims. `engine-strict` makes
+pnpm refuse a Node below any `engines.node` in the tree, the package's own
+included, so raising `engines.node` without raising `node-floor` fails the job
+by name.
+
+The job runs in one of two modes:
+
+- **An application** leaves `imports` empty. The job installs the repository on
+  the floor and builds it there, as its runtime would.
+- **A library** lists entry points in `imports`. The job packs the package on the
+  development Node, installs the tarball into an empty project on the floor and
+  imports each entry point, which is all a consumer's server rendering or tests
+  do with it. Building on the floor would test the development tools' Node
+  requirements instead, Vite's and Vitest's, and make every raise of theirs a
+  breaking change for the library. Each entry point has to load with only the
+  package's own dependencies installed, so one that needs an optional peer, such
+  as React, stays out of the list.
 
 ### Workflow files
 
