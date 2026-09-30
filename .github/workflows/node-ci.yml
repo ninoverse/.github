@@ -1,0 +1,192 @@
+name: Node CI
+
+# Reusable. Called by Node repositories in this organization; never runs on its
+# own, because `workflow_call` is the only trigger.
+#
+# Contract: the calling repository pins pnpm in package.json's `packageManager`
+# and Node in `.nvmrc`, and has the scripts `lint`, `typecheck`, `test` and
+# `build`. The script names are the contract, not the tools behind them — CI
+# calls the script so the command has exactly one definition.
+#
+#   jobs:
+#     ci:
+#       uses: ninoverse/.github/.github/workflows/node-ci.yml@v1.2.3
+#       with:
+#         node-floor: "20.0.0"
+#
+# Pin a released version, not @main and not a short @v1: @main lands in every
+# repository at once with no pull request, and @v1 never moves at all.
+
+on:
+  workflow_call:
+    inputs:
+      node-floor:
+        description: >
+          The lower bound of `engines.node` in package.json, repeated as an exact
+          version: `20.0.0` for `>=20`, never `20`, which installs the newest
+          20.x and hides the floor. Like go-ci.yml's `go-version` it is an
+          assertion, checked against the file on every run: raise `engines.node`
+          without raising this and the floor job fails by name.
+        type: string
+        required: true
+      imports:
+        description: >
+          For a library published to npm: the module specifiers the floor job
+          imports from the packed package, space-separated, such as
+          `@scope/pkg/sub`. Each must load with only the package's own
+          dependencies installed. Set, the floor job tests what consumers run —
+          the package, installed on the floor — rather than building there,
+          since building needs development tools consumers never run. Empty,
+          it installs the repository and builds on the floor, as an
+          application's runtime does.
+        type: string
+        default: ""
+      playwright:
+        description: >
+          Playwright browsers Gate 3 installs before `pnpm test`, as
+          `playwright install --with-deps` takes them: `chromium`. Empty
+          installs none.
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  # The four merge gates, one job each so a red check names the gate that broke.
+  #
+  # pnpm/action-setup reads the version from `packageManager` and setup-node
+  # reads `.nvmrc`, so neither version is written here: both are the calling
+  # repository's pins, and Renovate keeps them current there.
+  lint:
+    name: Gate 1 — lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+
+  typecheck:
+    name: Gate 2 — typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+
+  test:
+    name: Gate 3 — tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install Playwright browsers
+        if: inputs.playwright != ''
+        env:
+          BROWSERS: ${{ inputs.playwright }}
+        run: |
+          # Unquoted on purpose: the input is a space-separated list.
+          # shellcheck disable=SC2086
+          pnpm exec playwright install --with-deps $BROWSERS
+      - run: pnpm test
+
+  build:
+    name: Gate 4 — build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+  floor:
+    name: Node ${{ inputs.node-floor }}
+    runs-on: ubuntu-latest
+    # The counterpart of rust-ci.yml's MSRV job and go-ci.yml's floor job:
+    # `engines.node` states the oldest Node a package supports, every other job
+    # runs on `.nvmrc`, and nothing else tests the statement. `engine-strict`
+    # makes pnpm refuse a Node below `engines.node` rather than warn, for the
+    # package itself and for every dependency, so a dependency that needs a
+    # newer Node fails here too.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+
+      # An application: install the repository on the floor and build it there.
+      - uses: actions/setup-node@v4
+        if: inputs.imports == ''
+        with:
+          node-version: ${{ inputs.node-floor }}
+          cache: pnpm
+      - if: inputs.imports == ''
+        run: node --version
+      - name: Install on the floor with engine-strict
+        if: inputs.imports == ''
+        run: pnpm install --frozen-lockfile --config.engine-strict=true
+      - name: Build on the floor
+        if: inputs.imports == ''
+        run: pnpm build
+
+      # A library: pack on the development Node, then install the package the
+      # way a consumer does, into an empty project on the floor, and import it.
+      # Building on the floor would test Vite's and Vitest's Node requirements,
+      # which consumers never run, and turn every one of them into a major.
+      - uses: actions/setup-node@v4
+        if: inputs.imports != ''
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Pack on the development Node
+        if: inputs.imports != ''
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm pack --pack-destination "$RUNNER_TEMP/package"
+      - uses: actions/setup-node@v4
+        if: inputs.imports != ''
+        with:
+          node-version: ${{ inputs.node-floor }}
+      - if: inputs.imports != ''
+        run: node --version
+      # Resolve first, install second: pnpm checks a local tarball's own
+      # `engines.node` only when it installs from a lockfile, so `pnpm add`
+      # alone would install a package that no longer supports the floor.
+      - name: Install the package on the floor with engine-strict
+        if: inputs.imports != ''
+        working-directory: ${{ runner.temp }}
+        run: |
+          mkdir consumer
+          cd consumer
+          printf '{"name":"floor-consumer","private":true}\n' > package.json
+          pnpm add "$RUNNER_TEMP"/package/*.tgz --lockfile-only
+          pnpm install --frozen-lockfile --config.engine-strict=true
+      - name: Import the entry points on the floor
+        if: inputs.imports != ''
+        working-directory: ${{ runner.temp }}/consumer
+        env:
+          IMPORTS: ${{ inputs.imports }}
+        run: |
+          node --input-type=module -e '
+            for (const specifier of process.env.IMPORTS.split(/\s+/).filter(Boolean)) {
+              await import(specifier);
+              console.log("imported " + specifier);
+            }'
