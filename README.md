@@ -422,6 +422,51 @@ Four consequences worth knowing before changing `default.json`:
   under *Awaiting Schedule* on that repository's Dependency Dashboard and re-run
   the workflow.
 
+### Version floors
+
+The preset keeps Renovate off the numbers a repository promises, as opposed to
+the ones it pins for development. Each floor moves only in a change that means
+to move it:
+
+| Floor | Where | Why Renovate stays off |
+|---|---|---|
+| Rust | `dtolnay/rust-toolchain` in the MSRV job | It is pinned to `rust-version`; a bump would leave the job green while it stopped testing the MSRV at all. |
+| Go | the `go` directive in `go.mod` | `go-ci.yml`'s floor job installs the caller's `go-version` and fails by name once the directive moves past it. |
+| Node | `engines` in `package.json` | It is what a package declares to whoever installs it; for a published package, raising it is a breaking change. |
+
+What pins development stays managed: Go's `toolchain` directive, `.nvmrc`, and
+`packageManager`, which is also what tells Renovate which pnpm regenerates the
+lockfile.
+
+### Node libraries
+
+The base preset's `rangeStrategy: bump` suits an application, whose ranges
+nobody inherits. A library's ranges are its consumers' ranges: bumping one moves
+everyone who installs the library. [`node-library.json`](node-library.json)
+changes that for a package published to npm:
+
+| Dependency type | Update | For example |
+|---|---|---|
+| `dependencies` | The lockfile only, unless a release falls outside the range | `lit` stays `^3.3.3` while the lockfile moves to 3.4.0, so CI tests the newest release the range allows |
+| `peerDependencies` | Widen the range | `react` goes from `^19.0.0` to `^19.0.0 \|\| ^20.0.0`, so apps still on React 19 resolve the library |
+| `devDependencies` | The base preset's `bump` | No consumer installs them |
+
+A repository whose `.agentprofile.yml` says `deployment: library`, and whose
+package is published to npm, extends it as a second line:
+
+```json
+{
+  "extends": [
+    "github>ninoverse/.github",
+    "github>ninoverse/.github:node-library"
+  ]
+}
+```
+
+The cost is that CI only tests the newest release each range allows. A change
+that starts needing a newer version raises the range's minimum by hand, in that
+change.
+
 ### agentcfg
 
 A repository whose agent rule files are composed by
