@@ -72,6 +72,8 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
+      # The same rules are copied in rust-bump-version.yml and
+      # node-bump-version.yml. Change all three together.
       - name: Determine the bump type from the commit subject
         id: bump
         env:

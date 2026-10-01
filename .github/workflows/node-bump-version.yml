@@ -1,21 +1,25 @@
-name: Rust Bump Version
+name: Node Bump Version
 
-# Reusable. Called by Rust repositories in this organization on every push to
+# Reusable. Called by Node repositories in this organization on every push to
 # the default branch; never runs on its own, because `workflow_call` is the only
 # trigger.
 #
-# Reads the conventional-commit type off the pushed commit, bumps
-# [workspace.package].version accordingly, commits, and pushes a matching tag.
-# Every crate inherits the version via `version.workspace = true`, so the whole
-# workspace moves in lockstep.
+# Reads the conventional-commit type off the pushed commit, bumps the version in
+# package.json with `pnpm version`, commits, and pushes a matching tag. The same
+# shape as rust-bump-version.yml, because a Node package has a version field as
+# a Rust workspace does, and a separate file for the reason the CI workflows
+# are: the toolchain and the tool that edits the version share nothing.
 #
 #   jobs:
 #     bump:
-#       uses: ninoverse/.github/.github/workflows/rust-bump-version.yml@v1.2.3
+#       uses: ninoverse/.github/.github/workflows/node-bump-version.yml@v1.2.3
 #       with:
 #         app-id: ${{ vars.RELEASE_APP_ID }}
 #       secrets:
 #         app-private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+#
+# Contract: the calling repository pins pnpm in package.json's `packageManager`
+# and Node in `.nvmrc`, as node-ci.yml requires.
 #
 # The GitHub App is not optional and not interchangeable with GITHUB_TOKEN. A
 # tag pushed with GITHUB_TOKEN deliberately does not trigger other workflows, so
@@ -73,8 +77,8 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
-      # The same rules are copied in go-bump-version.yml and
-      # node-bump-version.yml. Change all three together.
+      # The same rules are copied in rust-bump-version.yml and
+      # go-bump-version.yml. Change all three together.
       - name: Determine the bump type from the commit subject
         id: bump
         env:
@@ -96,35 +100,27 @@ jobs:
           echo "Computed bump=$bump"
           echo "type=$bump" >> "$GITHUB_OUTPUT"
 
-      - uses: dtolnay/rust-toolchain@stable
+      # pnpm from `packageManager` and Node from `.nvmrc`, as in node-ci.yml.
+      # Nothing is installed: `pnpm version` only edits package.json.
+      - uses: pnpm/action-setup@v4
         if: steps.bump.outputs.type != 'skip'
 
-      # cargo-edit is not in install-action's manifest, so this goes through its
-      # cargo-binstall fallback. Still preferable to calling cargo-binstall
-      # directly: one action, already pinned, already used by every other
-      # workflow here.
-      - uses: taiki-e/install-action@v2
+      - uses: actions/setup-node@v4
         if: steps.bump.outputs.type != 'skip'
         with:
-          tool: cargo-edit
+          node-version-file: .nvmrc
 
-      - name: Bump the workspace version
+      - name: Bump the package version
         id: ver
         if: steps.bump.outputs.type != 'skip'
         env:
           BUMP_TYPE: ${{ steps.bump.outputs.type }}
         run: |
           set -euo pipefail
-          cargo set-version --bump "$BUMP_TYPE" --workspace
-
-          # Read the version back from the whole workspace rather than from one
-          # named crate. Erroring on divergence is the point: a workspace whose
-          # crates have drifted apart has no single version to tag, and picking
-          # one silently would tag the wrong thing.
-          new_version=$(cargo metadata --no-deps --format-version 1 \
-            | jq -r '[.packages[].version] | unique
-                     | if length == 1 then .[0]
-                       else error("crates have divergent versions: \(.)") end')
+          # No commit or tag here: the next step makes both, and pushes them
+          # with the app token.
+          pnpm version "$BUMP_TYPE" --no-git-tag-version
+          new_version=$(node -p "require('./package.json').version")
 
           echo "Next version: $new_version"
           echo "version=$new_version" >> "$GITHUB_OUTPUT"
@@ -141,7 +137,7 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Cargo.toml Cargo.lock
+          git add package.json
           git commit -m "chore: release v$NEW_VERSION"
           git tag -a "v$NEW_VERSION" -m "chore: release v$NEW_VERSION"
           git push origin HEAD:"${GITHUB_REF_NAME}" --follow-tags
