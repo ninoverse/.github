@@ -6,11 +6,14 @@ own file overrides this one entirely, so read that instead when it exists.
 
 What follows is process — branches, commits, pull requests. It is deliberately
 free of build commands, because those differ per repository. **Each repository's
-README is authoritative for how to build, test and verify it.**
+README is authoritative for how to build, test and verify it.** Where a
+repository has rules of its own — an `AGENTS.md` and the `.agents/` files it
+links — those are authoritative for process too, and this page only summarizes
+them.
 
 ## The loop
 
-One branch, one commit, one pull request, merged before the next begins.
+One branch, one pull request, merged before the next begins.
 
 The defining constraint: **no stacked PRs.** Every branch is cut from an
 up-to-date `main` and merged before the next one is cut. Only one branch is ever
@@ -27,7 +30,7 @@ git switch -c <type>/<short-description>
 # 3. Make the change, then run this repository's verification gate
 #    (see its README — `just ci`, `make ci`, or the equivalent)
 
-# 4. One commit
+# 4. Commit
 git add <the files this change touches>
 git commit
 
@@ -35,7 +38,7 @@ git commit
 git push -u origin <type>/<short-description>
 ```
 
-Work too large for one commit is split into a **sequence** of PRs, not a stack.
+Work too large for one PR is split into a **sequence** of PRs, not a stack.
 Each does one thing, passes the gate on its own, and is merged before the next
 begins. Order them so every PR leaves `main` green — a PR that needs a later PR
 to build is in the wrong position.
@@ -46,7 +49,6 @@ to build is in the wrong position.
 |------|-----|
 | Cut every branch from `main` | A branch cut from another branch is a stacked PR |
 | Never start change N+1 before N is merged | Same reason; only one branch in flight |
-| One commit per branch | The PR is the review unit; a merged PR is one commit on `main` |
 | Never push to `main` | `main` only advances through merged PRs |
 | Delete the branch after merging | A squash merge rewrites the commit, so the local branch is not an ancestor of `main` and will not be cleaned up for you |
 
@@ -90,16 +92,18 @@ commit, and anything resembling a credential.
 
 ## Pull requests
 
-Title follows the commit format, under 72 characters. The body follows the
-repository's pull request template.
+Title follows the commit format, under 72 characters. Every PR is
+squash-merged, and the title becomes the subject of that one commit on `main`,
+so it picks the release. The body follows the repository's pull request
+template.
 
-- One logical change per PR, in one commit
+- One logical change per PR
 - Branch from an up-to-date `main`, so no rebase is needed before review
 - The verification gate passes **before** the branch is pushed
 - If the PR establishes a new pattern, link the rule file or doc that records it
 
-Because a branch is only pushed once the gate already passes, there is no
-work-in-progress state to represent — draft PRs are not used.
+Who opens a PR, when one is a draft, and what happens while it is under review
+are in the repository's own rules, where it has them.
 
 | Lines changed | Action |
 |--------------|--------|
