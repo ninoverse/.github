@@ -357,6 +357,7 @@ version, a flag — belongs in the runner file, not here.
 | [`node-release.yml`](.github/workflows/node-release.yml) | Builds and packs the package on a tag and publishes the tarball with generated notes |
 | [`npm-publish.yml`](.github/workflows/npm-publish.yml) | Publishes a release's tarball to a registry that speaks npm's protocol, run by hand |
 | [`release-cloudrun.yml`](.github/workflows/release-cloudrun.yml) | `gcloud run deploy --source .` on a tag |
+| [`firebase-deploy.yml`](.github/workflows/firebase-deploy.yml) | `firebase deploy --only <targets>`, with the repository's `firebase.json` as the contract |
 
 The three bump workflows are split by ecosystem. Rust and Node have the same
 shape and differ where the CI workflows do, in the toolchain and the tool that
@@ -372,6 +373,18 @@ two, so a change to the rules goes into all three.
 `release-cloudrun.yml` is not split, because it genuinely is one shape:
 `--source .` hands the repository to Cloud Build, which builds the root
 Dockerfile, and nothing in the workflow knows what is inside it.
+
+`firebase-deploy.yml` has the same shape for Firebase.
+`firebase deploy --only <targets>` deploys what the repository's `firebase.json`
+says each target is, a Hosting site, Firestore or Storage rules, or Functions,
+and a target that needs a build runs it in its `predeploy` hook, so a deploy
+from a laptop builds the same way. The workflow installs the repository's
+dependencies with its pinned pnpm and Node first, so those hooks can run its
+scripts. `only` has no default, so a caller never deploys every target by
+accident. The CLI is fetched at the version pinned in the workflow, in the
+deploy job alone, and Renovate keeps that pin current through the
+`# renovate:` comment above it, as it does the Renovate image in
+`renovate.yml`.
 
 `rust-release.yml` is the other half of a tag for a repository that ships a
 binary rather than a deployment: the bump workflow pushes the tag, this one
@@ -539,6 +552,23 @@ jobs:
       region: ${{ vars.GCP_REGION }}
     secrets:
       gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+```
+
+```yaml
+name: Deploy the Docs Site on Tag Push
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+jobs:
+  deploy:
+    uses: ninoverse/.github/.github/workflows/firebase-deploy.yml@v1.2.3
+    with:
+      project: my-project
+      only: hosting:site
+    secrets:
+      firebase-service-account: ${{ secrets.FIREBASE_DEPLOY_SERVICE_ACCOUNT }}
 ```
 
 **Secrets do not cross into a called workflow on their own.** Every secret is

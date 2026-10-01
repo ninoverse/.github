@@ -73,11 +73,11 @@
   ],
   "customManagers": [
     {
-      "description": "The github-actions manager does not read `with:` inputs, so a pinned Renovate version is picked up from its annotation comment instead.",
+      "description": "The github-actions manager reads neither `with:` inputs nor `env:` values, so a version pinned in either is picked up from the `# renovate:` comment on the line above it: the Renovate image in renovate.yml, the Firebase CLI in firebase-deploy.yml.",
       "customType": "regex",
       "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
       "matchStrings": [
-        "# renovate: datasource=(?<datasource>[a-z-]+?) depName=(?<depName>[^\\s]+?)\\s+renovate-version: (?<currentValue>[^\\s]+)"
+        "# renovate: datasource=(?<datasource>[a-z-]+?) depName=(?<depName>[^\\s]+?)\\s+[A-Za-z0-9_-]+: (?<currentValue>[^\\s]+)"
       ],
       "versioningTemplate": "semver"
     },
