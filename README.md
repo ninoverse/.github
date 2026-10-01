@@ -352,16 +352,20 @@ version, a flag — belongs in the runner file, not here.
 |---|---|
 | [`rust-bump-version.yml`](.github/workflows/rust-bump-version.yml) | Bumps `[workspace.package].version` from the commit type, commits, pushes a `v*` tag |
 | [`go-bump-version.yml`](.github/workflows/go-bump-version.yml) | Derives the next version from the existing tags and pushes a `v*` tag |
+| [`node-bump-version.yml`](.github/workflows/node-bump-version.yml) | Bumps `package.json`'s `version` from the commit type, commits, pushes a `v*` tag |
 | [`rust-release.yml`](.github/workflows/rust-release.yml) | Builds one static binary per target on a tag and publishes them with generated notes |
 | [`release-cloudrun.yml`](.github/workflows/release-cloudrun.yml) | `gcloud run deploy --source .` on a tag |
 
-The two bump workflows are split by ecosystem for the same reason the CI ones
-are, though the seam is different. The conventional-commit parser is identical;
-what differs is that a Go module has no version field — SemVer git tags *are*
-the version — so it writes nothing, while the Rust one edits `Cargo.toml`,
-commits, and must then skip its own commit on the next push. Branching on that
-inside a workflow that pushes to the default branch is worse than duplicating
-twenty lines of parser.
+The three bump workflows are split by ecosystem. Rust and Node have the same
+shape and differ where the CI workflows do, in the toolchain and the tool that
+edits the version, so they are split for the same reason. Go's seam is
+different. The conventional-commit parser is identical; what differs is that a
+Go module has no version field — SemVer git tags *are* the version — so it
+writes nothing, while the Rust and Node ones edit `Cargo.toml` or
+`package.json`, commit, and must then skip their own commit on the next push.
+Branching on that inside a workflow that pushes to the default branch is worse
+than duplicating twenty lines of parser. Each copy of the parser names the other
+two, so a change to the rules goes into all three.
 
 `release-cloudrun.yml` is not split, because it genuinely is one shape:
 `--source .` hands the repository to Cloud Build, which builds the root
@@ -397,6 +401,10 @@ jobs:
     secrets:
       app-private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 ```
+
+A Go or Node repository calls `go-bump-version.yml` or `node-bump-version.yml`
+the same way. The Node one reads pnpm from `packageManager` and Node from
+`.nvmrc`, as `node-ci.yml` does.
 
 ```yaml
 name: Release
