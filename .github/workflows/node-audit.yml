@@ -1,0 +1,39 @@
+name: Node Audit
+
+# Reusable. Called by Node repositories in this organization.
+#
+# Separate from node-ci.yml because it answers a different question. CI asks
+# "does this change break the repository"; this asks "has the world changed
+# under a repository that did not". Advisories are published against
+# dependencies you already have, with no commit on your side, so the caller
+# drives this from a schedule as well as from dependency changes.
+#
+#   jobs:
+#     audit:
+#       uses: ninoverse/.github/.github/workflows/node-audit.yml@v1.2.3
+#
+# Contract: the calling repository pins pnpm in package.json's `packageManager`
+# and Node in `.nvmrc`, and commits `pnpm-lock.yaml`. There is no script to
+# call, unlike every other gate here: pnpm reserves `audit` for its own advisory
+# check, so `pnpm audit` never reaches a script of that name. The policy, which
+# severity fails the job and which advisories are accepted, is the repository's
+# `pnpm-workspace.yaml`, so it has one definition that a laptop reads too.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: pnpm audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      # Reads pnpm-lock.yaml, not node_modules, so nothing is installed.
+      - run: pnpm audit
