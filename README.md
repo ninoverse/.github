@@ -354,6 +354,7 @@ version, a flag — belongs in the runner file, not here.
 | [`go-bump-version.yml`](.github/workflows/go-bump-version.yml) | Derives the next version from the existing tags and pushes a `v*` tag |
 | [`node-bump-version.yml`](.github/workflows/node-bump-version.yml) | Bumps `package.json`'s `version` from the commit type, commits, pushes a `v*` tag |
 | [`rust-release.yml`](.github/workflows/rust-release.yml) | Builds one static binary per target on a tag and publishes them with generated notes |
+| [`node-release.yml`](.github/workflows/node-release.yml) | Builds and packs the package on a tag and publishes the tarball with generated notes |
 | [`release-cloudrun.yml`](.github/workflows/release-cloudrun.yml) | `gcloud run deploy --source .` on a tag |
 
 The three bump workflows are split by ecosystem. Rust and Node have the same
@@ -379,6 +380,13 @@ every target is built on the architecture it runs on, and a caller pairing the
 two by hand could only get it wrong. Assets are named `<binary>-<target>` and
 nothing else, since the tag is already in the download URL and anything
 fetching one builds that URL by hand.
+
+`node-release.yml` is the same half for a Node package. It builds with the
+`build` script, packs with `pnpm pack`, and attaches the tarball and its
+checksum to the tag's release, under the same changelog, whose step is copied
+from `rust-release.yml` and names it. A release is not a publish: nothing here
+reaches a registry. The build runs in a job of its own without write access, so
+the dependencies' code never holds a token that can push.
 
 The `extra-notes` input is markdown the calling repository computes about
 itself, prepended above the generated changelog. It is an input and never a
@@ -435,10 +443,14 @@ jobs:
       targets: x86_64-unknown-linux-musl,aarch64-unknown-linux-musl,aarch64-apple-darwin
 ```
 
-This is the one workflow here that needs a write permission, which is why it is
-the only caller example that carries a `permissions:` block. A workflow-level
-`permissions: contents: read` in the caller is fine, and does not have to be
-removed — a job-level block replaces it rather than being capped by it.
+A Node repository's caller is the same, with `node-release.yml` and no `with:`
+block: it has no binary or targets to name.
+
+The two release workflows are the ones here that need a write permission, which
+is why their caller is the only example that carries a `permissions:` block. A
+workflow-level `permissions: contents: read` in the caller is fine, and does not
+have to be removed — a job-level block replaces it rather than being capped by
+it.
 
 A repository with something to say about its own release computes it in a job
 of its own and passes it through:
