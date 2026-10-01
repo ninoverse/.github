@@ -1,0 +1,107 @@
+name: npm Publish
+
+# Reusable. Called by Node repositories in this organization, run by hand; never
+# runs on its own, because `workflow_call` is the only trigger.
+#
+# Publishes a release to one registry that speaks npm's protocol. It downloads
+# the tarball node-release.yml attached to the tag's GitHub release and runs
+# `npm publish` on it, so the registry serves byte for byte what the release
+# holds. Nothing is checked out, installed or built here.
+#
+#   on:
+#     workflow_dispatch:
+#       inputs:
+#         tag:
+#           description: The release to publish, such as v1.2.3
+#           required: true
+#           type: string
+#
+#   jobs:
+#     publish:
+#       permissions:
+#         contents: read
+#         id-token: write
+#       uses: ninoverse/.github/.github/workflows/npm-publish.yml@v1.2.3
+#       with:
+#         tag: ${{ inputs.tag }}
+#         registry-url: https://registry.npmjs.org
+#
+# With no `token`, this is npm's trusted publishing: npm trades the job's OIDC
+# token for a short-lived publish token, and adds provenance when the repository
+# and the package are both public. The trusted publisher configured on npmjs.com
+# names the calling workflow's file, not this one, because npm checks the
+# workflow that started the run. A registry without trusted publishing takes a
+# token instead:
+#
+#       secrets:
+#         token: ${{ secrets.REGISTRY_TOKEN }}
+#
+# That `permissions` block is required and belongs on the calling job, with
+# `id-token: write` even when a token is passed: the job below asks for it, and
+# GitHub refuses to start a called job that asks for more than its caller
+# grants.
+#
+# Pin a released version, not @main and not a short @v1: @main lands in every
+# repository at once with no pull request, and @v1 never moves at all.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: >
+          The tag whose GitHub release holds the tarball, such as `v1.2.3`.
+        type: string
+        required: true
+      registry-url:
+        description: >
+          The registry to publish to, such as `https://registry.npmjs.org`.
+          There is no default, so every caller names where its package goes.
+        type: string
+        required: true
+    secrets:
+      token:
+        description: >
+          A publish token for a registry without trusted publishing. Leave it
+          out for npmjs.org.
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish
+    runs-on: ubuntu-latest
+    permissions:
+      # To download the release's tarball.
+      contents: read
+      # For trusted publishing, which trades the job's OIDC token for one npm
+      # accepts.
+      id-token: write
+    steps:
+      # Trusted publishing needs npm 11.5.1 or later, on Node 22.14 or later;
+      # the newest Node 24, which this resolves to, ships a later npm.
+      # `registry-url` writes an .npmrc that points npm at the registry and
+      # reads the token from NODE_AUTH_TOKEN.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: ${{ inputs.registry-url }}
+      - run: npm --version
+
+      - name: Download the release's tarball
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" \
+            --pattern '*.tgz' --dir "$RUNNER_TEMP/package"
+
+      # With no token, NODE_AUTH_TOKEN is empty and the OIDC exchange is what
+      # authenticates: npm tries it first whenever the job can request an OIDC
+      # token, and keeps the token it was given when the registry refuses it.
+      - name: Publish
+        working-directory: ${{ runner.temp }}/package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.token }}
+        run: npm publish ./*.tgz

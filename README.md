@@ -355,6 +355,7 @@ version, a flag — belongs in the runner file, not here.
 | [`node-bump-version.yml`](.github/workflows/node-bump-version.yml) | Bumps `package.json`'s `version` from the commit type, commits, pushes a `v*` tag |
 | [`rust-release.yml`](.github/workflows/rust-release.yml) | Builds one static binary per target on a tag and publishes them with generated notes |
 | [`node-release.yml`](.github/workflows/node-release.yml) | Builds and packs the package on a tag and publishes the tarball with generated notes |
+| [`npm-publish.yml`](.github/workflows/npm-publish.yml) | Publishes a release's tarball to a registry that speaks npm's protocol, run by hand |
 | [`release-cloudrun.yml`](.github/workflows/release-cloudrun.yml) | `gcloud run deploy --source .` on a tag |
 
 The three bump workflows are split by ecosystem. Rust and Node have the same
@@ -387,6 +388,17 @@ checksum to the tag's release, under the same changelog, whose step is copied
 from `rust-release.yml` and names it. A release is not a publish: nothing here
 reaches a registry. The build runs in a job of its own without write access, so
 the dependencies' code never holds a token that can push.
+
+`npm-publish.yml` takes a release to a registry, only when run by hand. It
+downloads the tarball `node-release.yml` attached to the release and runs
+`npm publish` on it, so the registry serves byte for byte what the release
+holds, and nothing is built twice. It takes the tag and the registry's URL.
+npmjs.org needs no token: npm's trusted publishing trades the job's OIDC token
+for a short-lived one, and adds provenance when the repository and the package
+are both public. The trusted publisher configured on npmjs.com names the
+caller's workflow file, because npm checks the workflow that started the run,
+not the one that runs `npm publish`. A registry without trusted publishing
+takes a token instead.
 
 The `extra-notes` input is markdown the calling repository computes about
 itself, prepended above the generated changelog. It is an input and never a
@@ -446,11 +458,48 @@ jobs:
 A Node repository's caller is the same, with `node-release.yml` and no `with:`
 block: it has no binary or targets to name.
 
-The two release workflows are the ones here that need a write permission, which
-is why their caller is the only example that carries a `permissions:` block. A
-workflow-level `permissions: contents: read` in the caller is fine, and does not
-have to be removed — a job-level block replaces it rather than being capped by
-it.
+```yaml
+name: Publish to npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release to publish, such as v1.2.3
+        required: true
+        type: string
+
+jobs:
+  publish:
+    # Required, and it goes on the calling job: `id-token: write` is what npm's
+    # trusted publishing trades for a publish token. A caller that passes a
+    # token grants it too, because GitHub refuses to start a called job that
+    # asks for more than its caller grants.
+    permissions:
+      contents: read
+      id-token: write
+    uses: ninoverse/.github/.github/workflows/npm-publish.yml@v1.2.3
+    with:
+      tag: ${{ inputs.tag }}
+      registry-url: https://registry.npmjs.org
+```
+
+A registry that takes a token gets it as the `token` secret:
+
+```yaml
+    with:
+      tag: ${{ inputs.tag }}
+      registry-url: ${{ vars.REGISTRY_URL }}
+    secrets:
+      token: ${{ secrets.REGISTRY_TOKEN }}
+```
+
+`rust-release.yml`, `node-release.yml` and `npm-publish.yml` are the ones here
+that need a write permission, `contents: write` for a release and
+`id-token: write` for trusted publishing, which is why their callers are the
+only examples that carry a `permissions:` block. A workflow-level
+`permissions: contents: read` in the caller is fine, and does not have to be
+removed — a job-level block replaces it rather than being capped by it.
 
 A repository with something to say about its own release computes it in a job
 of its own and passes it through:
