@@ -17,6 +17,6 @@ See CONTRIBUTING.md.
 
 ---
 
-- [ ] One logical change, in one commit, branched from an up-to-date `main`
+- [ ] One logical change, branched from an up-to-date `main`
 - [ ] This repository's verification gate passes locally — see its README
 - [ ] Docs updated where this change makes them false
