@@ -103,11 +103,30 @@ jobs:
           registry-url: ${{ inputs.registry-url }}
       - run: npm --version
 
+      # The tag is typed by hand, so a mistyped one fails here with the form a
+      # release tag takes, and the tag it most likely meant, instead of gh's
+      # bare `release not found`.
       - name: Download the release's tarball
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag }}
         run: |
+          case "${TAG}" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *)
+              hint=""
+              case "${TAG#[vV]}" in
+                [0-9]*.[0-9]*.[0-9]*) hint=" Did you mean v${TAG#[vV]}?" ;;
+              esac
+              echo "::error::${TAG} is not a release tag: they look like v1.2.3.${hint}"
+              exit 1
+              ;;
+          esac
+          if ! gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" > /dev/null; then
+            newest=$(gh release view --repo "${GITHUB_REPOSITORY}" --json tagName --jq .tagName)
+            echo "::error::${GITHUB_REPOSITORY} has no release ${TAG}. The newest is ${newest}."
+            exit 1
+          fi
           gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" \
             --pattern '*.tgz' --dir "$RUNNER_TEMP/package"
 
