@@ -36,6 +36,13 @@ name: npm Publish
 #       secrets:
 #         token: ${{ secrets.REGISTRY_TOKEN }}
 #
+# With `stage: true`, the release is staged instead: npm uploads it,
+# authenticated and signed the same way, and the version goes live only once a
+# maintainer approves it on npmjs.com, or with `npm stage approve`, which asks
+# for their second factor. Only npmjs.org stages. A trusted publisher can allow
+# staging alone, and then refuses a plain publish with E403, `OIDC permission
+# denied for this action`.
+#
 # That `permissions` block is required and belongs on the calling job, with
 # `id-token: write` even when a token is passed: the job below asks for it, and
 # GitHub refuses to start a called job that asks for more than its caller
@@ -58,6 +65,12 @@ on:
           There is no default, so every caller names where its package goes.
         type: string
         required: true
+      stage:
+        description: >
+          Stage the release instead of publishing it, so it goes live only once
+          a maintainer approves it. npmjs.org only.
+        type: boolean
+        default: false
     secrets:
       token:
         description: >
@@ -79,8 +92,9 @@ jobs:
       # accepts.
       id-token: write
     steps:
-      # Trusted publishing needs npm 11.5.1 or later, on Node 22.14 or later;
-      # the newest Node 24, which this resolves to, ships a later npm.
+      # Trusted publishing needs npm 11.5.1 or later, on Node 22.14 or later,
+      # and staging 11.15.0; the newest Node 24, which this resolves to, ships a
+      # later npm.
       # `registry-url` writes an .npmrc that points npm at the registry and
       # reads the token from NODE_AUTH_TOKEN.
       - uses: actions/setup-node@v4
@@ -101,7 +115,24 @@ jobs:
       # authenticates: npm tries it first whenever the job can request an OIDC
       # token, and keeps the token it was given when the registry refuses it.
       - name: Publish
+        if: ${{ !inputs.stage }}
         working-directory: ${{ runner.temp }}/package
         env:
           NODE_AUTH_TOKEN: ${{ secrets.token }}
         run: npm publish ./*.tgz
+
+      # The same upload, authenticated the same way, left for a maintainer to
+      # approve. A green run no longer means the version is live, so the run's
+      # summary names the staged version and how to approve it.
+      - name: Stage
+        if: ${{ inputs.stage }}
+        working-directory: ${{ runner.temp }}/package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.token }}
+        run: |
+          npm stage publish ./*.tgz --json > "$RUNNER_TEMP/staged.json"
+          cat "$RUNNER_TEMP/staged.json"
+          id=$(jq -r '.[].id' "$RUNNER_TEMP/staged.json")
+          stage_id=$(jq -r '.[].stageId' "$RUNNER_TEMP/staged.json")
+          echo "Staged ${id}, not yet live: approve it on npmjs.com, or with \`npm stage approve ${stage_id}\`." \
+            >> "$GITHUB_STEP_SUMMARY"

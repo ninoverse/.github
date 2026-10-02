@@ -411,7 +411,10 @@ for a short-lived one, and adds provenance when the repository and the package
 are both public. The trusted publisher configured on npmjs.com names the
 caller's workflow file, because npm checks the workflow that started the run,
 not the one that runs `npm publish`. A registry without trusted publishing
-takes a token instead.
+takes a token instead. On npmjs.org, `stage: true` stages the release rather
+than publishing it: the version goes live only once a maintainer approves it on
+npmjs.com, or with `npm stage approve`, which asks for their second factor, and
+the run's summary names the stage id.
 
 The `extra-notes` input is markdown the calling repository computes about
 itself, prepended above the generated changelog. It is an input and never a
@@ -505,6 +508,15 @@ A registry that takes a token gets it as the `token` secret:
       registry-url: ${{ vars.REGISTRY_URL }}
     secrets:
       token: ${{ secrets.REGISTRY_TOKEN }}
+```
+
+npmjs.org can hold the release for a maintainer's approval:
+
+```yaml
+    with:
+      tag: ${{ inputs.tag }}
+      registry-url: https://registry.npmjs.org
+      stage: true
 ```
 
 `rust-release.yml`, `node-release.yml` and `npm-publish.yml` are the ones here
