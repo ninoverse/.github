@@ -82,7 +82,7 @@ jobs:
           PROJECT: ${{ inputs.project }}
           ONLY: ${{ inputs.only }}
           # renovate: datasource=npm depName=firebase-tools
-          FIREBASE_TOOLS_VERSION: 15.32.1
+          FIREBASE_TOOLS_VERSION: 15.33.0
         run: |
           npx --yes "firebase-tools@${FIREBASE_TOOLS_VERSION}" deploy \
             --only "$ONLY" \
